@@ -6,13 +6,13 @@
   "engines": { "node": ">=24.14.0 <25" },
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:server": "node --watch --import tsx --env-file-if-exists=.env.local src/server/main.ts --demo",
+    "dev:server": "node --watch --import ./scripts/env.mjs --import tsx src/server/main.ts --demo",
     "dev:web": "vite --host 127.0.0.1",
     "build": "tsc -p tsconfig.server.json && vite build",
-    "start": "node --env-file-if-exists=.env.local dist/server/server/main.js --demo",
+    "start": "node --import ./scripts/env.mjs dist/server/server/main.js --demo",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:browser": "python3 tests/browser.py",
+    "test:browser": "npm run build -- --logLevel warn && node scripts/browser.mjs",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {

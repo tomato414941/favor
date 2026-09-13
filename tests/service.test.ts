@@ -197,3 +197,17 @@ test('SQLite persistence retains requests, holds and idempotency across restart'
     assert.equal(service.session('demo-client').pointsAvailable, 38000);
   } finally { store.close(); rmSync(directory, { recursive: true }); }
 });
+test('file size and base64 boundaries fail atomically without a delivery or sale', () => {
+  const { create, service, effects, store } = setup();
+  const { id } = create(); service.accept('demo-creator', id, randomUUID());
+  const maximum = service.policy.maximumUploadBytes;
+  const oversized = [{ name: 'large.bin', content: Buffer.alloc(maximum + 3).toString('base64') }];
+  throwsCode(() => service.deliver('demo-creator', id, randomUUID(), oversized), 'INVALID_FILE');
+  const split = [maximum / 2, maximum / 2 + 1].map((length, index) => ({ name: `${index}.bin`, content: Buffer.alloc(length).toString('base64') }));
+  throwsCode(() => service.deliver('demo-creator', id, randomUUID(), split), 'FILE_TOO_LARGE');
+  throwsCode(() => service.deliver('demo-creator', id, randomUUID(), [{ name: 'bad.txt', content: 'abc' }]), 'INVALID_FILE');
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM files').get()!.n, 0);
+  assert.equal(service.get('demo-client', id).state, 'accepted'); assert.equal(effects(id, 'sale'), 0);
+  const boundary = service.deliver('demo-creator', id, randomUUID(), [{ name: 'exact.bin', content: Buffer.alloc(maximum).toString('base64') }]);
+  assert.equal(boundary.files[0]!.size, maximum); assert.equal(effects(id, 'sale'), 1);
+});
