@@ -12,6 +12,22 @@
 
 - [基本仕様](docs/requirements.md)：基本ルール、取引の流れ、未決定事項。
 
+## 構成・起動
+
+- 画面：React + Vite + TypeScript。サーバー：Node.js + Fastify。DB：SQLite（`node:sqlite`）。
+- Node.js 24.14以上・25未満を使用する。SQLiteと納品ファイルは `data/commission.sqlite` に保存する。
+- ローカル体験用として、依頼者・作り手の切替と模擬決済を使う。実際のカード請求・ポイント購入・出金は行わず、サーバーは `127.0.0.1` だけで待ち受ける。
+
+```sh
+npm ci
+npm run dev
+```
+
+画面は <http://127.0.0.1:3211>。体験用設定は承認7日・納品30日、本文2,000文字、納品24ファイル・合計8 MB。正式な提供条件とは区別する。
+`npm run build && npm start` では <http://127.0.0.1:3210> で起動する。
+
+検証は `npm run check`。ブラウザー検証は Python 3・Playwright・Chromiumを用意し、`npm run test:browser` を実行する（専用の一時DBを使用）。
+
 ## 決定事項
 
 1. 取引の基本モデルと主要ルールは、Skebを基準にする。
