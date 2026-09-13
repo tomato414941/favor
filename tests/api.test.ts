@@ -1,0 +1,50 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { buildApp } from '../src/server/app.js';
+import { CommissionService } from '../src/server/service.js';
+import { Store } from '../src/server/store.js';
+
+test('HTTP: session, validation, CSRF protection and complete transaction', async () => {
+  const store = new Store(); const service = new CommissionService(store); const app = await buildApp(service);
+  try {
+    assert.equal((await app.inject('/api/requests')).statusCode, 401);
+    assert.equal((await app.inject({ url: '/api/health', headers: { host: 'attacker.example' } })).statusCode, 403);
+    const payload = { role: 'client' };
+    assert.equal((await app.inject({ method: 'POST', url: '/api/demo/session', payload })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/demo/session', payload, headers: { 'x-commission-action': '1', origin: 'https://attacker.example' } })).statusCode, 403);
+    const login = await app.inject({ method: 'POST', url: '/api/demo/session', payload, headers: { 'x-commission-action': '1' } });
+    assert.equal(login.statusCode, 200);
+    assert.match(String(login.headers['set-cookie']), /HttpOnly/);
+    assert.match(String(login.headers['set-cookie']), /SameSite=Strict/);
+    const cookie = String(login.headers['set-cookie']).split(';')[0]!;
+    const headers = { cookie, 'x-commission-action': '1', 'idempotency-key': randomUUID() };
+    const body = { creatorId: 'demo-creator', genre: 'text', brief: '星を題材にした物語をお願いします。', amount: 12000, visibility: 'anonymous', paymentMethod: 'points', nsfw: false, agreeToRules: true };
+    const post = () => app.inject({ method: 'POST', url: '/api/requests', payload: body, headers });
+    const responses = await Promise.all([post(), post()]);
+    assert.equal(responses[0]!.statusCode, 201); assert.equal(responses[1]!.json().id, responses[0]!.json().id);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, agreeToRules: false }, headers: { ...headers, 'idempotency-key': randomUUID() } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, genre: '__proto__' }, headers: { ...headers, 'idempotency-key': randomUUID() } })).statusCode, 400);
+    const id = responses[0]!.json().id;
+    const creatorCookie = `commission_session=${encodeURIComponent(app.signCookie('demo-creator'))}`;
+    const creatorHeaders = { ...headers, cookie: creatorCookie, 'idempotency-key': randomUUID() };
+    const accepted = await app.inject({ method: 'POST', url: `/api/requests/${id}/accept`, headers: creatorHeaders });
+    assert.equal(accepted.statusCode, 200); assert.equal(accepted.json().state, 'accepted');
+    assert.equal(accepted.json().clientName, '匿名の依頼者');
+    assert.equal((await app.inject({ method: 'POST', url: `/api/requests/${id}/cancel`, headers })).statusCode, 409);
+    const delivered = await app.inject({ method: 'POST', url: `/api/requests/${id}/deliver`, headers: { ...creatorHeaders, 'idempotency-key': randomUUID() }, payload: { files: [{ name: 'お話.txt', content: Buffer.from('夜空には星。').toString('base64') }] } });
+    assert.equal(delivered.statusCode, 200);
+    const fileId = delivered.json().files[0].id;
+    const download = await app.inject({ url: `/api/files/${fileId}`, headers: { cookie } });
+    assert.equal(download.statusCode, 200); assert.equal(download.body, '夜空には星。');
+    assert.match(String(download.headers['content-disposition']), /^attachment;/);
+    assert.equal(download.headers['x-content-type-options'], 'nosniff');
+    assert.equal(download.headers['cache-control'], 'no-store');
+    assert.equal((await app.inject(`/api/files/${fileId}`)).statusCode, 401);
+    const stranger = `commission_session=${encodeURIComponent(app.signCookie('other-client'))}`;
+    assert.equal((await app.inject({ url: `/api/files/${fileId}`, headers: { cookie: stranger } })).statusCode, 404);
+    const publicData = (await app.inject('/api/works')).json();
+    assert.equal(publicData.works[0].amount, undefined); assert.deepEqual(publicData.works[0].files, []);
+    assert.equal(JSON.stringify(publicData).includes('demo-client'), false);
+  } finally { await app.close(); store.close(); }
+});

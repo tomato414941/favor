@@ -9,6 +9,9 @@ AGENTS.override.md
 # Local application data
 data/
 *.log
+node_modules/
+dist/
+__pycache__/
 
 # Editor and OS files
 .DS_Store
