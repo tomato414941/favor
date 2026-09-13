@@ -14,13 +14,25 @@ function setup(options: ConstructorParameters<typeof CommissionService>[3] = {})
   let now = 1_000_000;
   const store = new Store(); stores.push(store);
   const service = new CommissionService(store, () => now, { acceptanceMs: 1000, authorizationMs: 1000, deliveryMs: 10000 }, options);
-  const input: RequestInput = { creatorId: 'demo-creator', genre: 'text', brief: '海辺の喫茶店を舞台にした短い物語をお願いします。', amount: 12000, visibility: 'public', paymentMethod: 'card', nsfw: false, agreeToRules: true };
+  const input: RequestInput = { creatorId: 'demo-creator', brief: '海辺の喫茶店を舞台にした短い物語をお願いします。', amount: 12000, visibility: 'public', paymentMethod: 'card', nsfw: false, agreeToRules: true };
   const create = (extra: Partial<RequestInput> = {}, actor = 'demo-client', key = randomUUID()) => service.create(actor, key, { ...input, ...extra });
   const effects = (id: string, operation: string) => Number(store.db.prepare('SELECT COUNT(*) AS n FROM effects WHERE request_id = ? AND operation = ?').get(id, operation)!.n);
   return { store, service, input, create, effects, setTime: (value: number) => { now = value; } };
 }
 const file = [{ name: 'story.txt', content: Buffer.from('波音の聞こえる喫茶店で。').toString('base64') }];
 const throwsCode = (run: () => unknown, code: string) => assert.throws(run, (error) => error instanceof DomainError && error.code === code);
+
+test('requests have no classification in their views or storage', () => {
+  const { store, service, input, create } = setup();
+  const key = randomUUID();
+  const request = create({}, 'demo-client', key);
+  assert.equal('genre' in request, false);
+  assert.equal(store.db.prepare('PRAGMA table_info(requests)').all().some((column) => column.name === 'genre'), false);
+  assert.equal('genre' in service.list('demo-client')[0]!, false);
+  assert.equal('genre' in service.get('demo-creator', request.id), false);
+  const legacyInput = { ...input, genre: 'text' };
+  assert.equal(service.create('demo-client', key, legacyInput).id, request.id);
+});
 
 test('card: submit, accept, deliver and download', () => {
   const { service, create, effects } = setup();
@@ -191,7 +203,7 @@ test('SQLite persistence retains requests, holds and idempotency across restart'
   let store = new Store(dbPath);
   try {
     let service = new CommissionService(store); const key = randomUUID();
-    const input: RequestInput = { creatorId: 'demo-creator', genre: 'text', brief: '物語をお願いします。', amount: 12000, paymentMethod: 'points', visibility: 'hidden', nsfw: false, agreeToRules: true };
+    const input: RequestInput = { creatorId: 'demo-creator', brief: '物語をお願いします。', amount: 12000, paymentMethod: 'points', visibility: 'hidden', nsfw: false, agreeToRules: true };
     const first = service.create('demo-client', key, input); store.close(); store = new Store(dbPath); service = new CommissionService(store);
     assert.equal(service.create('demo-client', key, input).id, first.id);
     assert.equal(service.session('demo-client').pointsAvailable, 38000);

@@ -16,16 +16,16 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; }
-button, input, textarea, select { font: inherit; }
-button, a, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
+button, input, textarea { font: inherit; }
+button, a, input, textarea, summary { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; color: inherit; }
 button:disabled, input:disabled { cursor: wait; }
 button:disabled { opacity: .58; }
 button { border: 0; }
 a { color: inherit; }
-button, a, input, textarea, select, summary { outline-offset: 5px; }
+button, a, input, textarea, summary { outline-offset: 5px; }
 :focus-visible { outline: 2px solid var(--terra); }
-input, textarea, select { min-width: 0; }
+input, textarea { min-width: 0; }
 input[type='checkbox'], input[type='radio'] { accent-color: var(--green); width: 16px; height: 16px; flex: 0 0 16px; }
 p, h1, h2, h3, dl { margin: 0; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -86,8 +86,7 @@ dd { margin: 0; }
 .field > label, .label-row label, legend { font-size: 13px; display: block; margin-bottom: 11px; }
 .label-row { display: flex; align-items: baseline; gap: 8px; }
 .required-label { font-size: 9px; color: var(--terra); }
-select, textarea, .amount-input { width: 100%; border: 1px solid #ced3c8; border-radius: 3px; background: var(--white); color: var(--ink); }
-select { height: 47px; padding: 0 14px; cursor: pointer; font-size: 13px; }
+textarea, .amount-input { width: 100%; border: 1px solid #ced3c8; border-radius: 3px; background: var(--white); color: var(--ink); }
 textarea { resize: vertical; min-height: 174px; padding: 14px 16px; font-size: 13px; line-height: 1.95; }
 textarea::placeholder { color: #81857b; }
 .field-meta { display: flex; justify-content: space-between; gap: 15px; font-size: 10px; color: var(--muted); line-height: 1.8; margin-top: 7px; }
@@ -259,7 +258,7 @@ textarea::placeholder { color: #81857b; }
   .form-heading { padding: 25px 22px 22px; }
   .form-heading h2 { font-size: 22px; }
   .form-fields { padding: 25px 22px; }
-  select, textarea { font-size: 16px; }
+  textarea { font-size: 16px; }
   .field-meta { font-size: 9px; gap: 8px; }
   .choice-grid { gap: 7px; }
   .choice { padding: 12px 9px; }

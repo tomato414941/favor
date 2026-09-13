@@ -1,6 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { dirname } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import type { RequestInput } from '../shared.js';
+import { commandFingerprint } from './fingerprint.js';
 
 export class Store {
   readonly db: DatabaseSync;
@@ -17,7 +19,7 @@ export class Store {
       ) STRICT;
       CREATE TABLE IF NOT EXISTS requests (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
-        creator_id TEXT NOT NULL REFERENCES users(id), genre TEXT NOT NULL,
+        creator_id TEXT NOT NULL REFERENCES users(id),
         brief TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0),
         visibility TEXT NOT NULL, nsfw INTEGER NOT NULL, state TEXT NOT NULL,
         created_at INTEGER NOT NULL, accept_by INTEGER NOT NULL, deliver_by INTEGER NOT NULL,
@@ -49,6 +51,22 @@ export class Store {
         actor_id TEXT NOT NULL, action TEXT NOT NULL, at INTEGER NOT NULL
       ) STRICT;
     `);
+    this.transaction(() => {
+      if (!this.db.prepare('PRAGMA table_info(requests)').all().some((column) => column.name === 'genre')) return;
+      // Preserve retry keys when upgrading requests created with the old classification.
+      const requests = this.db.prepare(`SELECT r.id, r.client_id AS clientId, r.creator_id AS creatorId,
+        r.genre, r.brief, r.amount, r.visibility, r.nsfw, p.method AS paymentMethod
+        FROM requests r JOIN payments p ON p.request_id = r.id`).all() as unknown as Array<
+          Omit<RequestInput, 'nsfw' | 'agreeToRules'> & { id: string; clientId: string; genre: string; nsfw: number }
+        >;
+      const update = this.db.prepare(`UPDATE commands SET fingerprint = ?
+        WHERE actor_id = ? AND scope = 'create' AND request_id = ? AND fingerprint = ?`);
+      for (const { id, clientId, genre, nsfw, ...input } of requests) {
+        const payload: RequestInput = { ...input, nsfw: Boolean(nsfw), agreeToRules: true };
+        update.run(commandFingerprint(payload), clientId, id, commandFingerprint({ ...payload, genre }));
+      }
+      this.db.exec('ALTER TABLE requests DROP COLUMN genre');
+    });
     const add = this.db.prepare('INSERT OR IGNORE INTO users (id, name, role, points) VALUES (?, ?, ?, ?)');
     add.run('demo-client', '青葉 / aoba', 'client', 50000);
     add.run('demo-creator', '凪 / nagi', 'creator', 0);

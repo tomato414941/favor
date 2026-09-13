@@ -1,8 +1,3 @@
-export const genres = {
-  illustration: 'イラスト', comic: 'コミック', voice: 'ボイス',
-  text: 'テキスト', movie: 'ムービー', music: 'ミュージック', advice: 'アドバイス',
-} as const;
-export type Genre = keyof typeof genres;
 export type Visibility = 'public' | 'anonymous' | 'hidden';
 export type PaymentMethod = 'card' | 'points';
 export type RequestState = 'awaiting_acceptance' | 'accepting' | 'accepted' | 'delivered' | 'cancelled';
@@ -11,7 +6,6 @@ export type Role = 'client' | 'creator';
 
 export interface RequestInput {
   creatorId: string;
-  genre: Genre;
   brief: string;
   amount: number;
   visibility: Visibility;
@@ -23,7 +17,6 @@ export interface UploadInput { name: string; content: string }
 export interface FileView { id: string; name: string; size: number }
 export interface RequestView {
   id: string;
-  genre: Genre;
   brief: string;
   amount?: number;
   clientName: string;

@@ -22,21 +22,27 @@ test('HTTP: session, validation, CSRF protection and complete transaction', asyn
     const cookie = String(login.headers['set-cookie']).split(';')[0]!;
     assert.equal((await app.inject({ url: '/api/demo/session', headers: { cookie } })).json().role, 'client');
     const headers = { cookie, 'x-commission-action': '1', 'idempotency-key': randomUUID() };
-    const body = { creatorId: 'demo-creator', genre: 'text', brief: '星を題材にした物語をお願いします。', amount: 12000, visibility: 'anonymous', paymentMethod: 'points', nsfw: false, agreeToRules: true };
+    const body = { creatorId: 'demo-creator', brief: '星を題材にした物語をお願いします。', amount: 12000, visibility: 'anonymous', paymentMethod: 'points', nsfw: false, agreeToRules: true };
     const post = () => app.inject({ method: 'POST', url: '/api/requests', payload: body, headers });
     const responses = await Promise.all([post(), post()]);
     assert.equal(responses[0]!.statusCode, 201); assert.equal(responses[1]!.json().id, responses[0]!.json().id);
+    assert.equal('genre' in responses[0]!.json(), false);
+    const legacyRetry = await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, genre: 'text' }, headers });
+    assert.equal(legacyRetry.statusCode, 201); assert.equal(legacyRetry.json().id, responses[0]!.json().id);
+    assert.equal('genre' in legacyRetry.json(), false);
     assert.equal((await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, agreeToRules: false }, headers: { ...headers, 'idempotency-key': randomUUID() } })).statusCode, 400);
-    assert.equal((await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, genre: '__proto__' }, headers: { ...headers, 'idempotency-key': randomUUID() } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, visibility: '__proto__' }, headers: { ...headers, 'idempotency-key': randomUUID() } })).statusCode, 400);
     const id = responses[0]!.json().id;
     const creatorCookie = `commission_session=${encodeURIComponent(app.signCookie('demo-creator'))}`;
     const creatorHeaders = { ...headers, cookie: creatorCookie, 'idempotency-key': randomUUID() };
     const accepted = await app.inject({ method: 'POST', url: `/api/requests/${id}/accept`, headers: creatorHeaders });
     assert.equal(accepted.statusCode, 200); assert.equal(accepted.json().state, 'accepted');
+    assert.equal('genre' in accepted.json(), false);
     assert.equal(accepted.json().clientName, '匿名の依頼者');
     assert.equal((await app.inject({ method: 'POST', url: `/api/requests/${id}/cancel`, headers })).statusCode, 409);
     const delivered = await app.inject({ method: 'POST', url: `/api/requests/${id}/deliver`, headers: { ...creatorHeaders, 'idempotency-key': randomUUID() }, payload: { files: [{ name: 'お話.txt', content: Buffer.from('夜空には星。').toString('base64') }] } });
     assert.equal(delivered.statusCode, 200);
+    assert.equal('genre' in delivered.json(), false);
     const fileId = delivered.json().files[0].id;
     const download = await app.inject({ url: `/api/files/${fileId}`, headers: { cookie } });
     assert.equal(download.statusCode, 200); assert.equal(download.body, '夜空には星。');
@@ -47,6 +53,7 @@ test('HTTP: session, validation, CSRF protection and complete transaction', asyn
     const stranger = `commission_session=${encodeURIComponent(app.signCookie('other-client'))}`;
     assert.equal((await app.inject({ url: `/api/files/${fileId}`, headers: { cookie: stranger } })).statusCode, 404);
     const publicData = (await app.inject('/api/works')).json();
+    assert.equal('genre' in publicData.works[0], false);
     assert.equal(publicData.works[0].amount, undefined); assert.deepEqual(publicData.works[0].files, []);
     assert.equal(JSON.stringify(publicData).includes('demo-client'), false);
   } finally { await app.close(); store.close(); }

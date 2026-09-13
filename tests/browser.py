@@ -30,12 +30,13 @@ def main():
             page.goto(base_url)
             page.wait_for_load_state("networkidle")
             expect(page.get_by_role("heading", name="好きな創作を、 その人の自由で。")).to_be_visible()
+            expect(page.get_by_role("combobox")).to_have_count(0)
+            expect(page.get_by_label("ジャンル", exact=True)).to_have_count(0)
             print("Rendered controls:", page.get_by_role("button").all_text_contents())
             page.screenshot(path=str(artifacts / "desktop-compose.png"), full_page=True)
 
             def compose(brief, amount="12000", payment="ポイント", visibility="匿名"):
                 page.get_by_role("navigation").get_by_role("button", name="依頼を送る", exact=True).click()
-                page.get_by_label("ジャンル", exact=True).select_option("text")
                 page.get_by_label("依頼内容", exact=True).fill(brief)
                 page.get_by_label("依頼金額", exact=True).fill(amount)
                 page.get_by_role("radio", name=re.compile(f"^{visibility} ")).check()
@@ -61,6 +62,7 @@ def main():
                 if route.request.method != "POST":
                     route.continue_()
                     return
+                assert "genre" not in route.request.post_data_json
                 result = route.fetch()
                 assert result.status == 201
                 injected_failure["count"] += 1
@@ -79,10 +81,15 @@ def main():
             injected_failure["active"] = False
             assert injected_failure["count"] == 1
             assert retry_keys[0] == injected_failure["key"], "A retry must reuse its original operation key"
-            assert len(context.request.get(f"{base_url}/api/requests").json()["requests"]) == 1
+            requests = context.request.get(f"{base_url}/api/requests").json()["requests"]
+            assert len(requests) == 1
+            assert "genre" not in requests[0]
             assert session()["pointsBalance"] == 50000
             assert session()["pointsAvailable"] == 38000
             expect(detail()).to_contain_text("承認待ち")
+            expect(detail().get_by_role("heading", name="依頼の詳細", exact=True)).to_be_visible()
+            assert "ジャンル" not in page.locator("body").inner_text()
+            assert "テキストの依頼" not in page.locator("body").inner_text()
             page.reload()
             page.wait_for_load_state("networkidle")
             page.get_by_role("navigation").get_by_role("button", name=re.compile("依頼一覧")).click()
@@ -150,7 +157,8 @@ def main():
             # Check actual user-facing copy, including the full form and detail states.
             for unwanted in ["実装中", "未実装", "TODO", "仕様反映", "開発者向け", "次の作業", "下書き"]:
                 assert unwanted not in page.locator("body").inner_text()
-            assert len(page.locator("select#genre option").all_text_contents()) == 7
+            expect(page.get_by_role("combobox")).to_have_count(0)
+            expect(page.get_by_label("ジャンル", exact=True)).to_have_count(0)
             for width in [768, 390, 320]:
                 page.set_viewport_size({"width": width, "height": 844})
                 page.evaluate("document.fonts.ready")
@@ -169,7 +177,7 @@ def main():
                     role("依頼者")
             assert not console_errors, console_errors
             assert not page_errors, page_errors
-            print("PASS: retry idempotency, anonymous approval, multiple files, redelivery, download, points, withdrawal, card refund, mobile decline, responsive layout, UI copy, browser errors")
+            print("PASS: requests without classification, retry idempotency, anonymous approval, multiple files, redelivery, download, points, withdrawal, card refund, mobile decline, responsive layout, UI copy, browser errors")
             print(f"Screenshots: {artifacts}")
         except Exception:
             page.screenshot(path=str(artifacts / "failure.png"), full_page=True)

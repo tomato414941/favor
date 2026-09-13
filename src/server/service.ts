@@ -1,6 +1,7 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
-import { genres, type CreatorView, type PaymentMethod, type PaymentState, type RequestInput, type RequestState, type RequestView, type SessionView, type UploadInput, type Visibility } from '../shared.js';
+import type { CreatorView, PaymentMethod, PaymentState, RequestInput, RequestState, RequestView, SessionView, UploadInput, Visibility } from '../shared.js';
+import { commandFingerprint } from './fingerprint.js';
 import { Store } from './store.js';
 
 const DAY = 86_400_000;
@@ -12,7 +13,7 @@ export const DEMO_POLICY = {
 type Policy = typeof DEMO_POLICY;
 interface UserRow { id: string; name: string; role: 'client' | 'creator'; points: number }
 interface RequestRow {
-  id: string; client_id: string; creator_id: string; genre: RequestInput['genre'];
+  id: string; client_id: string; creator_id: string;
   brief: string; amount: number; visibility: Visibility; nsfw: number; state: RequestState;
   created_at: number; accept_by: number; deliver_by: number;
   cancelled_reason: string | null; delivery_version: number;
@@ -26,12 +27,6 @@ export class DomainError extends Error {
   constructor(public code: string, message: string, public statusCode = 409) { super(message); }
 }
 const fail = (code: string, message: string, status = 409): never => { throw new DomainError(code, message, status); };
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
-  return JSON.stringify(value);
-}
-
 export class CommissionService {
   readonly policy: Policy;
   constructor(
@@ -82,7 +77,7 @@ export class CommissionService {
     const party = actor === row.client_id || actor === row.creator_id;
     const payment = this.payment(row.id);
     return {
-      id: row.id, genre: row.genre, brief: row.brief,
+      id: row.id, brief: row.brief,
       clientName: row.visibility === 'anonymous' && actor !== row.client_id ? '匿名の依頼者' : this.user(row.client_id).name,
       creatorName: this.user(row.creator_id).name, visibility: row.visibility, nsfw: Boolean(row.nsfw),
       state: row.state, createdAt: row.created_at, acceptBy: row.accept_by, deliverBy: row.deliver_by,
@@ -111,7 +106,7 @@ export class CommissionService {
   private command(actor: string, scope: string, key: string, payload: unknown, run: () => string): RequestView {
     this.user(actor);
     if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{8,100}$/.test(key)) fail('BAD_KEY', '操作を再読み込みしてお試しください。', 400);
-    const fingerprint = createHash('sha256').update(canonical(payload)).digest('hex');
+    const fingerprint = commandFingerprint(payload);
     const id = this.store.transaction(() => {
       const existing = this.one<{ fingerprint: string; request_id: string }>('SELECT * FROM commands WHERE actor_id = ? AND scope = ? AND key = ?', actor, scope, key);
       if (existing) {
@@ -127,19 +122,23 @@ export class CommissionService {
   create(actor: string, key: string, input: RequestInput): RequestView {
     this.expire();
     if (!input || typeof input !== 'object') fail('INVALID_INPUT', '依頼内容を入力してください。', 400);
-    if (typeof input.genre !== 'string' || !Object.hasOwn(genres, input.genre) || !['public', 'anonymous', 'hidden'].includes(input.visibility) || !['card', 'points'].includes(input.paymentMethod)) fail('INVALID_INPUT', '依頼の設定を確認してください。', 400);
+    if (!['public', 'anonymous', 'hidden'].includes(input.visibility) || !['card', 'points'].includes(input.paymentMethod)) fail('INVALID_INPUT', '依頼の設定を確認してください。', 400);
     if (typeof input.brief !== 'string' || !input.brief.trim() || input.brief.trim().length > this.policy.maximumBriefLength) fail('INVALID_BRIEF', `依頼内容は1〜${this.policy.maximumBriefLength}文字で入力してください。`, 400);
     if (!Number.isSafeInteger(input.amount) || input.amount < this.policy.minimumAmount || input.amount > this.policy.maximumAmount) fail('INVALID_AMOUNT', '依頼金額を確認してください。', 400);
     if (input.agreeToRules !== true || typeof input.nsfw !== 'boolean') fail('RULES_REQUIRED', '依頼のルールへの同意が必要です。', 400);
-    const normalized = { ...input, brief: input.brief.trim() };
+    const normalized: RequestInput = {
+      creatorId: input.creatorId, brief: input.brief.trim(), amount: input.amount,
+      visibility: input.visibility, paymentMethod: input.paymentMethod,
+      nsfw: input.nsfw, agreeToRules: input.agreeToRules,
+    };
     return this.command(actor, 'create', key, normalized, () => {
       if (this.user(actor).role !== 'client' || this.user(input.creatorId).role !== 'creator' || actor === input.creatorId) fail('FORBIDDEN', 'この相手には依頼できません。', 403);
       if (this.mock.failAuthorization) fail('PAYMENT_DECLINED', '支払いを確保できませんでした。別の支払方法をお試しください。', 422);
       if (input.paymentMethod === 'points' && this.availablePoints(actor) < input.amount) fail('INSUFFICIENT_POINTS', '利用できるポイントが不足しています。', 422);
       const id = randomUUID();
       const now = this.clock();
-      this.store.db.prepare(`INSERT INTO requests (id, client_id, creator_id, genre, brief, amount, visibility, nsfw, state, created_at, accept_by, deliver_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_acceptance', ?, ?, ?)`).run(id, actor, input.creatorId, input.genre, normalized.brief, input.amount, input.visibility, Number(input.nsfw), now, now + this.policy.acceptanceMs, now + this.policy.deliveryMs);
+      this.store.db.prepare(`INSERT INTO requests (id, client_id, creator_id, brief, amount, visibility, nsfw, state, created_at, accept_by, deliver_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_acceptance', ?, ?, ?)`).run(id, actor, input.creatorId, normalized.brief, input.amount, input.visibility, Number(input.nsfw), now, now + this.policy.acceptanceMs, now + this.policy.deliveryMs);
       this.store.db.prepare("INSERT INTO payments VALUES (?, ?, 'authorized', ?, ?, 0)").run(id, input.paymentMethod, input.amount, now + this.policy.authorizationMs);
       this.effect(id, 'authorize');
       this.audit(id, actor, 'submit');

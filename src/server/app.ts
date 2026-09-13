@@ -4,7 +4,7 @@ import staticFiles from '@fastify/static';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { genres, type RequestInput, type UploadInput } from '../shared.js';
+import type { RequestInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
 import type { FastifyError, FastifyRequest } from 'fastify';
 
@@ -60,9 +60,9 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   app.get<{ Params: { id: string } }>('/api/requests/:id', async (request) => service.get(actor(request), request.params.id));
   app.post<{ Body: RequestInput }>('/api/requests', {
     schema: { body: { type: 'object', additionalProperties: false,
-      required: ['creatorId', 'genre', 'brief', 'amount', 'visibility', 'paymentMethod', 'nsfw', 'agreeToRules'],
+      required: ['creatorId', 'brief', 'amount', 'visibility', 'paymentMethod', 'nsfw', 'agreeToRules'],
       properties: {
-        creatorId: { type: 'string', maxLength: 100 }, genre: { enum: Object.keys(genres) },
+        creatorId: { type: 'string', maxLength: 100 },
         brief: { type: 'string', minLength: 1, maxLength: service.policy.maximumBriefLength },
         amount: { type: 'integer', minimum: service.policy.minimumAmount, maximum: service.policy.maximumAmount },
         visibility: { enum: ['public', 'anonymous', 'hidden'] }, paymentMethod: { enum: ['card', 'points'] },

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { genres, paymentLabels, requestLabels, type CreatorView, type Genre, type RequestInput, type RequestView, type Role, type SessionView, type UploadInput, type Visibility } from '../src/shared';
+import { paymentLabels, requestLabels, type CreatorView, type RequestInput, type RequestView, type Role, type SessionView, type UploadInput, type Visibility } from '../src/shared';
 import { api, encodeFile } from './api';
 
 interface Limits { brief: number; files: number; uploadBytes: number; maximumAmount: number }
@@ -159,7 +159,7 @@ export function App() {
         {requests.length ? <div className="requests-layout">
           <div className="request-list" aria-label="依頼を選択">
             {requests.map((request) => <button key={request.id} className={`request-item ${request.id === selectedId ? 'selected' : ''}`} aria-pressed={request.id === selectedId} onClick={() => { setSelectedId(request.id); setNotice(''); setError(''); }}>
-              <span className="request-item-top"><Status request={request} /><span>{genres[request.genre]}</span></span>
+              <span className="request-item-top"><Status request={request} /></span>
               <span className="request-excerpt">{request.brief}</span>
               <span className="request-item-bottom"><span>{session.role === 'creator' ? request.clientName : request.creatorName}</span><span>{yen(request.amount ?? 0)}</span></span>
             </button>)}
@@ -188,7 +188,6 @@ function CreatorCard({ creator }: { creator: CreatorView }) {
 }
 
 function RequestForm({ settings: { creator, limits }, session, busy, submit }: { settings: CreatorSettings; session: SessionView; busy: boolean; submit: (input: RequestInput) => Promise<void> }) {
-  const [genre, setGenre] = useState<Genre>('illustration');
   const [brief, setBrief] = useState('');
   const [amount, setAmount] = useState(String(creator.recommendedAmount));
   const [visibility, setVisibility] = useState<Visibility>('public');
@@ -197,12 +196,11 @@ function RequestForm({ settings: { creator, limits }, session, busy, submit }: {
   const [agreed, setAgreed] = useState(false);
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submit({ creatorId: creator.id, genre, brief, amount: Number(amount), visibility, paymentMethod, nsfw, agreeToRules: agreed });
+    await submit({ creatorId: creator.id, brief, amount: Number(amount), visibility, paymentMethod, nsfw, agreeToRules: agreed });
   }
   return <form className="request-form" onSubmit={(event) => void onSubmit(event)}>
     <div className="form-heading"><span className="eyebrow">NEW REQUEST</span><h2>依頼を送る</h2><p>一度のメッセージに、お願いしたいことをまとめて。</p></div>
     <fieldset disabled={busy} className="form-fields">
-      <div className="field"><label htmlFor="genre">ジャンル</label><select id="genre" value={genre} onChange={(event) => setGenre(event.target.value as Genre)}>{Object.entries(genres).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
       <div className="field"><div className="label-row"><label htmlFor="brief">依頼内容</label><span className="required-label">必須</span></div><textarea id="brief" value={brief} onChange={(event) => setBrief(event.target.value)} required maxLength={limits.brief} rows={7} placeholder="描いてほしい風景や、聴いてみたい言葉。好きなところや参考資料のURLも、こちらに。" aria-describedby="brief-hint brief-count" /><div className="field-meta"><span id="brief-hint">送信後の打ち合わせやリテイク要求はできません。</span><span id="brief-count">{number.format(brief.length)} / {number.format(limits.brief)}</span></div></div>
       <div className="field"><label htmlFor="amount">依頼金額</label><div className="amount-row"><div className="amount-input"><span aria-hidden="true">¥</span><input id="amount" type="number" inputMode="numeric" min={creator.minimumAmount} max={limits.maximumAmount} step="1" value={amount} onChange={(event) => setAmount(event.target.value)} required aria-describedby="amount-hint" /></div><button type="button" className="text-button" onClick={() => setAmount(String(creator.recommendedAmount))}>推奨額にする</button></div><p className="hint" id="amount-hint">最低 {yen(creator.minimumAmount)} · 金額は第三者には公開されません。</p></div>
       <fieldset className="field visibility-options"><legend>公開範囲</legend><div className="choice-grid">
@@ -231,7 +229,7 @@ function RequestDetail({ request, role, limits, busy, act }: { request: RequestV
   }
   return <article className="request-detail" aria-label="依頼の詳細">
     <div className="detail-heading"><span className="eyebrow">REQUEST DETAILS</span><Status request={request} /></div>
-    <h2>{genres[request.genre]}の依頼</h2><p className="detail-parties">{request.clientName} <Arrow /> {request.creatorName}</p>
+    <h2>依頼の詳細</h2><p className="detail-parties">{request.clientName} <Arrow /> {request.creatorName}</p>
     {request.state !== 'cancelled' && <ol className="timeline" aria-label="取引の流れ">{['依頼を送信', '承認・制作', '納品'].map((label, index) => {
       const step = request.state === 'delivered' ? 2 : request.state === 'accepted' ? 1 : 0;
       return <li className={index <= step ? 'reached' : ''} aria-current={index === step ? 'step' : undefined} key={label}><span>{index < step ? '✓' : String(index + 1).padStart(2, '0')}</span>{label}</li>;
