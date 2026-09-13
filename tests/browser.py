@@ -6,6 +6,7 @@ import sys
 import tempfile
 
 from playwright.sync_api import expect, sync_playwright
+from browser_invitations import check_invitations
 
 
 def main():
@@ -177,6 +178,7 @@ def main():
                     role("依頼者")
             assert not console_errors, console_errors
             assert not page_errors, page_errors
+            check_invitations(browser, base_url, artifacts)
             print("PASS: requests without classification, retry idempotency, anonymous approval, multiple files, redelivery, download, points, withdrawal, card refund, mobile decline, responsive layout, UI copy, browser errors")
             print(f"Screenshots: {artifacts}")
         except Exception:

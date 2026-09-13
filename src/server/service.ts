@@ -83,7 +83,7 @@ export class CommissionService {
       state: row.state, createdAt: row.created_at, acceptBy: row.accept_by, deliverBy: row.deliver_by,
       cancelledReason: party ? row.cancelled_reason : null, deliveryVersion: row.delivery_version,
       files: party ? this.store.db.prepare('SELECT id, name, length(data) AS size FROM files WHERE request_id = ? AND version = ?').all(row.id, row.delivery_version) as unknown as RequestView['files'] : [],
-      ...(party ? { amount: row.amount, paymentMethod: payment.method, paymentState: payment.state } : {}),
+      ...(party ? { viewerRole: actor === row.client_id ? 'client' as const : 'creator' as const, amount: row.amount, paymentMethod: payment.method, paymentState: payment.state } : {}),
     };
   }
   get(actor: string, id: string): RequestView {

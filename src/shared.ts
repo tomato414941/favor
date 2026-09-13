@@ -17,6 +17,7 @@ export interface UploadInput { name: string; content: string }
 export interface FileView { id: string; name: string; size: number }
 export interface RequestView {
   id: string;
+  viewerRole?: Role;
   brief: string;
   amount?: number;
   clientName: string;

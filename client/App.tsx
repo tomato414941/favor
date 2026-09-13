@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { paymentLabels, requestLabels, type CreatorView, type RequestInput, type RequestView, type Role, type SessionView, type UploadInput, type Visibility } from '../src/shared';
 import { api, encodeFile } from './api';
+import { RequestForm } from './RequestForm';
+import { Arrow } from './ui';
+import { Invitations, InvitationLanding } from './Invitations';
 
 interface Limits { brief: number; files: number; uploadBytes: number; maximumAmount: number }
 interface CreatorSettings { creator: CreatorView; limits: Limits }
-type Page = 'compose' | 'requests';
+type Page = 'compose' | 'requests' | 'invitations';
 const number = new Intl.NumberFormat('ja-JP');
 const yen = (value: number) => `¥${number.format(value)}`;
 const date = (value: number) => new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(value);
@@ -14,16 +17,23 @@ const reasons: Record<string, string> = {
   give_up: '作り手が制作を終了しました。', acceptance_expired: '承認期限または支払確保の期限を過ぎました。',
   delivery_expired: '納品期限を過ぎました。', payment_expired: '支払いの確認期限を過ぎました。',
 };
-function Arrow({ down = false }: { down?: boolean }) {
-  return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true" className={down ? 'arrow-down' : ''}>
-    <path d="M4 12h15m-6-6 6 6-6 6" stroke="currentColor" strokeWidth="1.5" />
-  </svg>;
-}
 function Status({ request }: { request: RequestView }) {
   return <span className={`status status-${request.state}`}><i />{requestLabels[request.state]}</span>;
 }
 
 export function App() {
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const change = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', change);
+    return () => window.removeEventListener('hashchange', change);
+  }, []);
+  const route = new URLSearchParams(hash.slice(1));
+  if (route.has('invite')) return <InvitationLanding key={hash} token={route.get('invite') ?? ''} />;
+  return <Workspace key={route.get('request') ?? 'workspace'} initialRequestId={route.get('request')} />;
+}
+
+function Workspace({ initialRequestId }: { initialRequestId: string | null }) {
   const [settings, setSettings] = useState<CreatorSettings | null>(null);
   const [session, setSession] = useState<SessionView | null>(null);
   const [requests, setRequests] = useState<RequestView[]>([]);
@@ -57,12 +67,12 @@ export function App() {
       setSettings(creatorSettings);
       setSession(nextSession);
       setRequests(data.requests);
-      setSelectedId(data.requests[0]?.id ?? null);
-      setPage(nextSession.role === 'creator' ? 'requests' : 'compose');
+      setSelectedId(data.requests.find((request) => request.id === initialRequestId)?.id ?? data.requests[0]?.id ?? null);
+      setPage(initialRequestId || nextSession.role === 'creator' ? 'requests' : 'compose');
     };
     void boot().catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'ページを読み込めませんでした。'); });
     return () => { active = false; };
-  }, [bootAttempt]);
+  }, [bootAttempt, initialRequestId]);
 
   useEffect(() => {
     if (!session) return;
@@ -133,6 +143,7 @@ export function App() {
         <nav aria-label="メインナビゲーション">
           {session.role === 'client' && <button aria-current={page === 'compose' ? 'page' : undefined} onClick={() => navigate('compose')}>依頼を送る</button>}
           <button aria-current={page === 'requests' ? 'page' : undefined} onClick={() => navigate('requests')}>依頼一覧 <span className="count">{requests.length}</span></button>
+          <button aria-current={page === 'invitations' ? 'page' : undefined} onClick={() => navigate('invitations')}>招待を送る</button>
         </nav>
         <div className="role-switch" aria-label="体験する役割">
           <button aria-pressed={session.role === 'client'} disabled={busy} onClick={() => void changeRole('client')}>依頼者で体験</button>
@@ -143,7 +154,7 @@ export function App() {
     <main className="shell">
       {error && <div className="message error" role="alert">{error} <button onClick={() => session ? void run(refresh) : setBootAttempt((value) => value + 1)} disabled={busy}>再読み込み</button></div>}
       {notice && <div className="message success" role="status">{notice}</div>}
-      {!settings || !session ? <div className="loading" role="status">{error ? '接続をお確かめください。' : 'ページを開いています…'}</div> : page === 'compose' && session.role === 'client' ? <>
+      {!settings || !session ? <div className="loading" role="status">{error ? '接続をお確かめください。' : 'ページを開いています…'}</div> : page === 'invitations' ? <Invitations key={session.name} settings={settings} session={session} openRequest={(id) => { void run(async () => { await refresh(); setSelectedId(id); setPage('requests'); }); }} /> : page === 'compose' && session.role === 'client' ? <>
         <section className="intro">
           <p className="eyebrow"><span /> A LITTLE TRUST, A NEW CREATION</p>
           <h1>好きな創作を、<br />その人の自由で。</h1>
@@ -161,10 +172,10 @@ export function App() {
             {requests.map((request) => <button key={request.id} className={`request-item ${request.id === selectedId ? 'selected' : ''}`} aria-pressed={request.id === selectedId} onClick={() => { setSelectedId(request.id); setNotice(''); setError(''); }}>
               <span className="request-item-top"><Status request={request} /></span>
               <span className="request-excerpt">{request.brief}</span>
-              <span className="request-item-bottom"><span>{session.role === 'creator' ? request.clientName : request.creatorName}</span><span>{yen(request.amount ?? 0)}</span></span>
+              <span className="request-item-bottom"><span>{request.viewerRole === 'creator' ? request.clientName : request.creatorName}</span><span>{yen(request.amount ?? 0)}</span></span>
             </button>)}
           </div>
-          {selected && <RequestDetail key={`${session.role}:${selected.id}`} request={selected} role={session.role} limits={settings.limits} busy={busy} act={act} />}
+          {selected && <RequestDetail key={`${selected.viewerRole}:${selected.id}`} request={selected} role={selected.viewerRole ?? session.role} limits={settings.limits} busy={busy} act={act} />}
         </div> : <div className="empty-state"><span className="empty-symbol" aria-hidden="true">c.</span><h2>まだ依頼はありません</h2><p>{session.role === 'creator' ? '依頼が届くと、ここで内容を確認できます。' : '気持ちを言葉にして、はじめての依頼を。'}</p>{session.role === 'client' && <button className="primary" onClick={() => navigate('compose')}>依頼を送る <Arrow /></button>}</div>}
       </section>}
     </main>
@@ -187,39 +198,6 @@ function CreatorCard({ creator }: { creator: CreatorView }) {
   </aside>;
 }
 
-function RequestForm({ settings: { creator, limits }, session, busy, submit }: { settings: CreatorSettings; session: SessionView; busy: boolean; submit: (input: RequestInput) => Promise<void> }) {
-  const [brief, setBrief] = useState('');
-  const [amount, setAmount] = useState(String(creator.recommendedAmount));
-  const [visibility, setVisibility] = useState<Visibility>('public');
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'points'>('card');
-  const [nsfw, setNsfw] = useState(false);
-  const [agreed, setAgreed] = useState(false);
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await submit({ creatorId: creator.id, brief, amount: Number(amount), visibility, paymentMethod, nsfw, agreeToRules: agreed });
-  }
-  return <form className="request-form" onSubmit={(event) => void onSubmit(event)}>
-    <div className="form-heading"><span className="eyebrow">NEW REQUEST</span><h2>依頼を送る</h2><p>一度のメッセージに、お願いしたいことをまとめて。</p></div>
-    <fieldset disabled={busy} className="form-fields">
-      <div className="field"><div className="label-row"><label htmlFor="brief">依頼内容</label><span className="required-label">必須</span></div><textarea id="brief" value={brief} onChange={(event) => setBrief(event.target.value)} required maxLength={limits.brief} rows={7} placeholder="描いてほしい風景や、聴いてみたい言葉。好きなところや参考資料のURLも、こちらに。" aria-describedby="brief-hint brief-count" /><div className="field-meta"><span id="brief-hint">送信後の打ち合わせやリテイク要求はできません。</span><span id="brief-count">{number.format(brief.length)} / {number.format(limits.brief)}</span></div></div>
-      <div className="field"><label htmlFor="amount">依頼金額</label><div className="amount-row"><div className="amount-input"><span aria-hidden="true">¥</span><input id="amount" type="number" inputMode="numeric" min={creator.minimumAmount} max={limits.maximumAmount} step="1" value={amount} onChange={(event) => setAmount(event.target.value)} required aria-describedby="amount-hint" /></div><button type="button" className="text-button" onClick={() => setAmount(String(creator.recommendedAmount))}>推奨額にする</button></div><p className="hint" id="amount-hint">最低 {yen(creator.minimumAmount)} · 金額は第三者には公開されません。</p></div>
-      <fieldset className="field visibility-options"><legend>公開範囲</legend><div className="choice-grid">
-        {([
-          ['public', '公開', '依頼者名・依頼文・作品のプレビューを公開'],
-          ['anonymous', '匿名', '依頼文・プレビューを公開。作り手にも名前を知らせない'],
-          ['hidden', '非表示', '依頼文・作品をサービス内で一般公開しない'],
-        ] as const).map(([value, title, description]) => <label className={`choice ${visibility === value ? 'checked' : ''}`} key={value}><input type="radio" name="visibility" value={value} checked={visibility === value} onChange={() => setVisibility(value)} /><span className="choice-title">{title}</span><span className="choice-description">{description}</span></label>)}
-      </div><p className="hint">非表示でも、作り手によるSNS等での作品発表は制限しません。秘密保持や権利譲渡を意味しません。</p></fieldset>
-      <label className="checkbox-line"><input type="checkbox" checked={nsfw} onChange={(event) => setNsfw(event.target.checked)} /><span>成人向けなど、閲覧に注意が必要な内容を含む</span></label>
-      <fieldset className="field payment-options"><legend>支払方法</legend><div className="payment-choices"><label className={paymentMethod === 'card' ? 'checked' : ''}><input type="radio" name="payment" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} /><span>カード<span className="payment-subtitle">体験用</span></span></label><label className={paymentMethod === 'points' ? 'checked' : ''}><input type="radio" name="payment" checked={paymentMethod === 'points'} onChange={() => setPaymentMethod('points')} /><span>ポイント<span className="payment-subtitle">利用可能 {number.format(session.pointsAvailable)} pt</span></span></label></div>
-        <p className="hint">{paymentMethod === 'card' ? '送信時に利用枠を確保し、承認時に請求が確定します。体験用のため、カード情報の入力や実際の請求はありません。' : 'ポイントは事前にチャージして使うサービス内残高です。送信時に代金分を確保し、承認時に差し引きます。ここでは体験用の残高を使います。'}</p>
-        {paymentMethod === 'points' && <p className="wallet-summary">残高 {number.format(session.pointsBalance)} pt · 確保中 {number.format(session.pointsBalance - session.pointsAvailable)} pt</p>}
-      </fieldset>
-      <div className="agreement"><label className="checkbox-line"><input type="checkbox" required checked={agreed} onChange={(event) => setAgreed(event.target.checked)} /><span>見積もり・打ち合わせ・リテイク要求をせず、表現や仕上がりを作り手に任せることに同意します。</span></label><p>承認前の取消・期限切れでは支払確保を解除します。承認後の納品期限切れ・ギブアップでは返金またはポイント返還となります。</p></div>
-      <div className="submit-row"><span>承認・納品の期限は<br />依頼の送信日から数えます。</span><button className="primary" type="submit" disabled={busy}>{busy ? '送信しています…' : '支払いを確保して送信'}<Arrow /></button></div>
-    </fieldset>
-  </form>;
-}
 
 function RequestDetail({ request, role, limits, busy, act }: { request: RequestView; role: Role; limits: Limits; busy: boolean; act: (request: RequestView, action: 'accept' | 'cancel', files?: UploadInput[]) => Promise<void> }) {
   const canDeliver = role === 'creator' && ['accepted', 'delivered'].includes(request.state) && Date.now() < request.deliverBy;

@@ -202,6 +202,56 @@ textarea::placeholder { color: #81857b; }
 .empty-state h2 { font-size: 19px; font-weight: 400; }
 .empty-state p { color: var(--muted); font-size: 12px; line-height: 2; margin-top: 15px; }
 .empty-state .primary { margin-top: 25px; }
+.text-input { width: 100%; min-width: 0; border: 1px solid #ced3c8; border-radius: 3px; padding: 14px 16px; background: var(--white); color: var(--ink); font-size: 13px; }
+.invitations-section { padding-top: 43px; }
+.invitations-section .section-heading { margin-bottom: 16px; }
+.section-copy { color: var(--muted); font-size: 12px; line-height: 2; }
+.invitation-compose { margin-top: 34px; }
+.invitation-guide { padding: 15px 8px 0 0; position: sticky; top: 24px; }
+.envelope-mark { display: block; color: var(--terra); font-family: var(--serif); font-size: 70px; line-height: 1; margin-bottom: 25px; }
+.invitation-guide h2 { font-size: 21px; font-weight: 400; line-height: 1.9; letter-spacing: .05em; }
+.invitation-guide ol { margin: 26px 0; padding-left: 20px; font-size: 12px; line-height: 2; }
+.invitation-guide li { padding-left: 5px; margin-bottom: 12px; }
+.invitation-guide > p { font-size: 11px; color: var(--muted); line-height: 2; margin-bottom: 14px; }
+.invitation-guide > .hint { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 24px; font-size: 10px; }
+.invitation-warning { background: #f6ede0; border-left: 2px solid #b9946d; font-size: 11px; line-height: 1.9; padding: 14px 17px; margin: 0 0 28px; color: #795139; }
+.invitation-privacy-note { color: var(--muted); font-size: 10px; line-height: 1.9; margin: -15px 0 24px; }
+.invitation-compose .payment-choices { grid-template-columns: 1fr; }
+.invitation-list-heading { margin: 46px 0 23px; display: flex; justify-content: space-between; align-items: baseline; gap: 20px; }
+.invitation-list-heading h2 { font-size: 21px; font-weight: 400; }
+.empty-invitations { color: var(--muted); border-block: 1px solid var(--line); padding: 30px 0; font-size: 12px; }
+.invitation-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; align-items: start; }
+.invitation-card:only-child { grid-column: 1 / -1; width: 100%; max-width: 760px; }
+.invitation-share { padding-top: 22px; border-top: 1px solid var(--line); }
+.invitation-share > label { display: block; font-size: 11px; margin-bottom: 10px; }
+.link-row { display: flex; gap: 10px; }
+.link-row .quiet-button { flex-shrink: 0; }
+.link-row .text-input { font-size: 11px; }
+.invitation-share .action-buttons { margin-top: 22px; }
+.new-invitation { margin-top: 23px; display: inline-flex; align-items: center; gap: 25px; }
+.invitation-header .wordmark { text-decoration: none; }
+.invitation-header > span { margin-left: auto; color: var(--muted); font-size: 11px; }
+.invitation-landing { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 65px; padding-top: 55px; min-height: 65vh; }
+.invitation-intro { padding-top: 16px; }
+.invitation-intro h1 { font-size: 34px; font-weight: 400; line-height: 1.65; letter-spacing: .045em; margin: 24px 0; }
+.invitation-intro > p:last-child { color: var(--muted); font-size: 12px; line-height: 2.1; }
+.invitation-reader { min-width: 0; }
+.invitation-reader > .message { margin-top: 0; margin-bottom: 22px; }
+.identity-card { padding: 28px; border: 1px solid var(--line); border-radius: 4px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; background: #edf0e4; align-items: start; }
+.identity-card h2 { font-size: 20px; font-weight: 400; margin-top: 10px; }
+.identity-card > div > p:last-child { font-size: 11px; color: var(--muted); line-height: 1.9; margin-top: 11px; }
+.identity-card .text-button { font-size: 10px; }
+.demo-identities { grid-column: 1 / -1; border-top: 1px solid #d1d8c5; padding-top: 19px; }
+.demo-identities > span { display: block; font-size: 10px; color: var(--muted); margin-bottom: 12px; }
+.demo-identities .action-buttons { gap: 10px; }
+.demo-identities .quiet-button { background: var(--white); }
+.invitation-reader > .request-detail { margin-top: 24px; }
+.invitation-agreement { padding: 18px; background: #f2f2e9; border-radius: 3px; margin-bottom: 22px; }
+.invitation-reader .primary { text-decoration: none; }
+.invitation-preferences { display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; border-top: 1px solid var(--line); margin-top: 30px; padding-top: 23px; }
+.invitation-preferences h2 { font-size: 13px; font-weight: 400; }
+.invitation-preferences p { font-size: 10px; line-height: 1.9; color: var(--muted); margin-top: 10px; }
+.invitation-preferences .text-button { font-size: 10px; }
 @media (prefers-reduced-motion: no-preference) {
   .intro, .compose-layout, .requests-section { animation: appear .5s both; }
   .compose-layout { animation-delay: .08s; }
@@ -223,6 +273,8 @@ textarea::placeholder { color: #81857b; }
   .submit-row br { display: none; }
   .requests-layout { grid-template-columns: 280px minmax(0, 1fr); gap: 22px; }
   .request-detail { padding: 26px; }
+  .invitation-landing { grid-template-columns: 240px minmax(0, 1fr); gap: 32px; }
+  .invitation-intro h1 { font-size: 29px; }
 }
 @media (max-width: 760px) {
   .shell { width: calc(100% - 36px); }
@@ -280,6 +332,28 @@ textarea::placeholder { color: #81857b; }
   .detail-facts div:first-child dd { font-size: 23px; }
   .action-buttons { align-items: stretch; flex-direction: column; gap: 12px; }
   .delivery-form .primary { width: 100%; }
+  .invitations-section { padding-top: 31px; }
+  .invitations-section .section-heading h1 { font-size: 25px; }
+  .invitation-guide { position: static; padding: 0 0 28px; }
+  .envelope-mark { display: none; }
+  .invitation-guide h2 { font-size: 19px; }
+  .invitation-guide h2 br { display: none; }
+  .invitation-guide ol { margin-block: 18px; }
+  .invitation-guide li { margin-bottom: 6px; }
+  .invitation-guide > .hint { margin-top: 15px; padding-top: 14px; }
+  .invitation-list { grid-template-columns: minmax(0, 1fr); }
+  .invitation-list-heading h2 { font-size: 18px; }
+  .invitation-list-heading .text-button { font-size: 10px; }
+  .text-input { font-size: 16px; }
+  .invitation-header { padding-block: 25px; }
+  .invitation-header > span { font-size: 10px; }
+  .invitation-landing { display: block; padding-top: 31px; }
+  .invitation-intro { padding: 0 0 29px; }
+  .invitation-intro h1 { margin: 16px 0; font-size: 31px; }
+  .invitation-intro > p:last-child { font-size: 11px; }
+  .identity-card { padding: 23px 20px; gap: 17px; }
+  .demo-identities .action-buttons { flex-direction: row; }
+  .demo-identities .quiet-button { font-size: 10px; flex: 1; padding-inline: 12px; }
 }
 @media (max-width: 480px) {
   .intro-note { display: none; }
