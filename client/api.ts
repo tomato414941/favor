@@ -2,15 +2,18 @@ export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-export async function api<T>(path: string, body?: unknown, key?: string): Promise<T> {
+export async function api<T>(path: string, body?: unknown, key?: string, invitationToken?: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       credentials: 'same-origin',
-      headers: body === undefined ? {} : {
-        'Content-Type': 'application/json', 'X-Commission-Action': '1',
-        ...(key ? { 'Idempotency-Key': key } : {}),
+      headers: {
+        ...(invitationToken ? { 'X-Commission-Invitation': invitationToken } : {}),
+        ...(body === undefined ? {} : {
+          'Content-Type': 'application/json', 'X-Commission-Action': '1',
+          ...(key ? { 'Idempotency-Key': key } : {}),
+        }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });

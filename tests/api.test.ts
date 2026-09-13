@@ -6,7 +6,7 @@ import { CommissionService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 
 test('HTTP: session, validation, CSRF protection and complete transaction', async () => {
-  const store = new Store(); const service = new CommissionService(store); const app = await buildApp(service);
+  const store = new Store(); const service = new CommissionService(store); const app = await buildApp(service, { demoAuth: true });
   try {
     assert.equal((await app.inject('/api/demo/session')).json(), null);
     assert.equal((await app.inject('/api/creator')).json().limits.maximumAmount, service.policy.maximumAmount);
@@ -33,7 +33,8 @@ test('HTTP: session, validation, CSRF protection and complete transaction', asyn
     assert.equal((await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, agreeToRules: false }, headers: { ...headers, 'idempotency-key': randomUUID() } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: '/api/requests', payload: { ...body, visibility: '__proto__' }, headers: { ...headers, 'idempotency-key': randomUUID() } })).statusCode, 400);
     const id = responses[0]!.json().id;
-    const creatorCookie = `commission_session=${encodeURIComponent(app.signCookie('demo-creator'))}`;
+    const creatorLogin = await app.inject({ method: 'POST', url: '/api/demo/session', payload: { role: 'creator' }, headers: { 'x-commission-action': '1' } });
+    const creatorCookie = String(creatorLogin.headers['set-cookie']).split(';')[0]!;
     const creatorHeaders = { ...headers, cookie: creatorCookie, 'idempotency-key': randomUUID() };
     const accepted = await app.inject({ method: 'POST', url: `/api/requests/${id}/accept`, headers: creatorHeaders });
     assert.equal(accepted.statusCode, 200); assert.equal(accepted.json().state, 'accepted');
@@ -50,8 +51,8 @@ test('HTTP: session, validation, CSRF protection and complete transaction', asyn
     assert.equal(download.headers['x-content-type-options'], 'nosniff');
     assert.equal(download.headers['cache-control'], 'no-store');
     assert.equal((await app.inject(`/api/files/${fileId}`)).statusCode, 401);
-    const stranger = `commission_session=${encodeURIComponent(app.signCookie('other-client'))}`;
-    assert.equal((await app.inject({ url: `/api/files/${fileId}`, headers: { cookie: stranger } })).statusCode, 404);
+    const stranger = 'commission_session=other-client';
+    assert.equal((await app.inject({ url: `/api/files/${fileId}`, headers: { cookie: stranger } })).statusCode, 401);
     const publicData = (await app.inject('/api/works')).json();
     assert.equal('genre' in publicData.works[0], false);
     assert.equal(publicData.works[0].amount, undefined); assert.deepEqual(publicData.works[0].files, []);

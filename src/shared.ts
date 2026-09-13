@@ -39,6 +39,47 @@ export interface SessionView {
   pointsBalance: number;
   pointsAvailable: number;
 }
+export interface SocialAccount {
+  provider: string;
+  subject: string;
+  handle: string;
+  name: string;
+}
+export interface IdentitySession {
+  account: SocialAccount;
+  registered: boolean;
+}
+export interface InvitationInput {
+  recipientHandle: string;
+  brief: string;
+  amount: number;
+  visibility: Visibility;
+  nsfw: boolean;
+  agreeToRules: boolean;
+}
+export type InvitationState = 'pending' | 'accepted' | 'cancelled';
+export interface InvitationView {
+  id: string;
+  recipientName: string;
+  recipientHandle: string;
+  clientName: string;
+  brief: string;
+  amount: number;
+  visibility: Visibility;
+  nsfw: boolean;
+  state: InvitationState;
+  paymentState: PaymentState;
+  createdAt: number;
+  expiresAt: number;
+  deliverBy: number;
+  cancelledReason: string | null;
+  requestId: string | null;
+}
+export interface InvitationLinkResult {
+  invitation: InvitationView;
+  /** Returned once. A lost response can be recovered by explicitly reissuing the link. */
+  token?: string;
+}
 export interface CreatorView {
   id: string; name: string; recommendedAmount: number; minimumAmount: number;
   acceptanceDays: number; deliveryDays: number;

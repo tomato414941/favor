@@ -11,7 +11,7 @@ export const DEMO_POLICY = {
   maximumBriefLength: 2000, maximumFiles: 24, maximumUploadBytes: 8 * 1024 * 1024,
 };
 type Policy = typeof DEMO_POLICY;
-interface UserRow { id: string; name: string; role: 'client' | 'creator'; points: number }
+interface UserRow { id: string; name: string; role: 'client' | 'creator'; points: number; creator_enabled: number }
 interface RequestRow {
   id: string; client_id: string; creator_id: string;
   brief: string; amount: number; visibility: Visibility; nsfw: number; state: RequestState;
@@ -132,7 +132,7 @@ export class CommissionService {
       nsfw: input.nsfw, agreeToRules: input.agreeToRules,
     };
     return this.command(actor, 'create', key, normalized, () => {
-      if (this.user(actor).role !== 'client' || this.user(input.creatorId).role !== 'creator' || actor === input.creatorId) fail('FORBIDDEN', 'この相手には依頼できません。', 403);
+      if (!this.user(input.creatorId).creator_enabled || actor === input.creatorId) fail('FORBIDDEN', 'この相手には依頼できません。', 403);
       if (this.mock.failAuthorization) fail('PAYMENT_DECLINED', '支払いを確保できませんでした。別の支払方法をお試しください。', 422);
       if (input.paymentMethod === 'points' && this.availablePoints(actor) < input.amount) fail('INSUFFICIENT_POINTS', '利用できるポイントが不足しています。', 422);
       const id = randomUUID();
@@ -158,6 +158,23 @@ export class CommissionService {
       this.audit(id, actor, 'accept');
       if (!this.mock.deferCardCapture || this.payment(id).method === 'points') this.capture(id);
       return id;
+    });
+  }
+  /** Transfer an existing mock card hold. Only the verified invitation service calls this. */
+  receiveInvitation(actor: string, clientId: string, input: Omit<RequestInput, 'creatorId' | 'paymentMethod'>,
+    dates: { createdAt: number; expiresAt: number; deliverBy: number }, key: string): RequestView {
+    return this.store.transaction(() => {
+      this.user(clientId);
+      if (actor === clientId || !this.user(actor).creator_enabled) fail('FORBIDDEN', 'この依頼は受け取れません。', 403);
+      if (this.clock() >= Math.min(dates.expiresAt, dates.deliverBy)) fail('INVITATION_EXPIRED', '招待の有効期限を過ぎました。');
+      const id = randomUUID();
+      this.store.db.prepare(`INSERT INTO requests (id, client_id, creator_id, brief, amount, visibility, nsfw, state, created_at, accept_by, deliver_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_acceptance', ?, ?, ?)`).run(id, clientId, actor, input.brief, input.amount,
+          input.visibility, Number(input.nsfw), dates.createdAt, dates.expiresAt, dates.deliverBy);
+      this.store.db.prepare("INSERT INTO payments VALUES (?, 'card', 'authorized', ?, ?, 0)").run(id, input.amount, dates.expiresAt);
+      this.effect(id, 'authorize');
+      this.audit(id, actor, 'invitation_claimed');
+      return this.accept(actor, id, key);
     });
   }
   private capture(id: string) {

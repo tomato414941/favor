@@ -1,16 +1,19 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
-import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { RequestInput, UploadInput } from '../shared.js';
+import type { InvitationInput, RequestInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
-import type { FastifyError, FastifyRequest } from 'fastify';
+import { AuthService, type DemoPersona } from './auth.js';
+import { InvitationService } from './invitations.js';
+import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
-export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean } = {}) {
+export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean; demoAuth?: boolean } = {}) {
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 12 * 1024 * 1024 });
-  await app.register(cookie, { secret: randomBytes(32).toString('hex') });
+  const auth = new AuthService(service.store, service.clock);
+  const invitations = new InvitationService(service, auth);
+  await app.register(cookie);
   app.addHook('onRequest', async (request, reply) => {
     if (!['localhost', '127.0.0.1'].includes(request.hostname)) return reply.code(403).send({ message: 'ローカル環境から利用してください。' });
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
@@ -24,9 +27,9 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   });
   app.addHook('onSend', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Referrer-Policy', 'same-origin');
+    reply.header('Referrer-Policy', 'no-referrer');
     reply.header('X-Frame-Options', 'DENY');
-    if (request.url.startsWith('/api/')) reply.header('Cache-Control', 'no-store');
+    if (request.url.startsWith('/api/') || request.url === '/') reply.header('Cache-Control', 'no-store');
   });
   app.setErrorHandler<FastifyError>((error, _request, reply) => {
     if (error instanceof DomainError) return reply.code(error.statusCode).send({ code: error.code, message: error.message });
@@ -34,26 +37,73 @@ export async function buildApp(service: CommissionService, options: { staticRoot
     app.log.error(error);
     return reply.code(500).send({ message: '処理を完了できませんでした。時間をおいてお試しください。' });
   });
-  const actor = (request: FastifyRequest): string => {
-    const raw = request.cookies.commission_session;
-    const value = raw ? request.unsignCookie(raw) : null;
-    if (!value?.valid || !value.value) throw new DomainError('UNAUTHORIZED', '体験する役割を選んでください。', 401);
-    return value.value;
+  const actor = (request: FastifyRequest): string => auth.actor(request.cookies.commission_session);
+  const identity = (request: FastifyRequest) => auth.identity(request.cookies.commission_session);
+  const invitationToken = (request: FastifyRequest): string => typeof request.headers['x-commission-invitation'] === 'string' ? request.headers['x-commission-invitation'] : '';
+  const login = (request: FastifyRequest, reply: FastifyReply, persona: DemoPersona) => {
+    auth.logout(request.cookies.commission_session);
+    const token = auth.demoLogin(persona);
+    reply.setCookie('commission_session', token, { httpOnly: true, sameSite: 'strict', path: '/', maxAge: 86400 });
+    return token;
   };
   const key = (request: FastifyRequest): string => typeof request.headers['idempotency-key'] === 'string' ? request.headers['idempotency-key'] : '';
-  app.get('/api/health', async () => ({ ok: true, mode: 'demo' }));
+  app.get('/api/health', async () => ({ ok: true, mode: 'demo', demoAuth: options.demoAuth === true }));
   app.get('/api/creator', async () => ({ creator: service.creator(), limits: { brief: service.policy.maximumBriefLength, files: service.policy.maximumFiles, uploadBytes: service.policy.maximumUploadBytes, maximumAmount: service.policy.maximumAmount } }));
-  app.get('/api/demo/session', async (request) => {
-    try { return service.session(actor(request)); }
+  if (options.demoAuth === true) {
+    app.get('/api/demo/session', async (request) => {
+      try { return service.session(actor(request)); }
+      catch (error) { if (error instanceof DomainError && error.statusCode === 401) return null; throw error; }
+    });
+    app.post<{ Body: { role: 'client' | 'creator' } }>('/api/demo/session', {
+      schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: { enum: ['client', 'creator'] } } } },
+    }, async (request, reply) => {
+      return service.session(auth.actor(login(request, reply, request.body.role)));
+    });
+    app.post<{ Body: { persona: 'recipient' | 'other' } }>('/api/demo/identity', {
+      schema: { body: { type: 'object', required: ['persona'], additionalProperties: false, properties: { persona: { enum: ['recipient', 'other'] } } } },
+    }, async (request, reply) => auth.identity(login(request, reply, request.body.persona)));
+  }
+  app.get('/api/auth/identity', async (request) => {
+    try { return identity(request); }
     catch (error) { if (error instanceof DomainError && error.statusCode === 401) return null; throw error; }
   });
-  app.post<{ Body: { role: 'client' | 'creator' } }>('/api/demo/session', {
-    schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: { enum: ['client', 'creator'] } } } },
-  }, async (request, reply) => {
-    const id = request.body.role === 'client' ? 'demo-client' : 'demo-creator';
-    reply.setCookie('commission_session', id, { signed: true, httpOnly: true, sameSite: 'strict', path: '/', maxAge: 86400 });
-    return service.session(id);
+  app.post('/api/auth/logout', async (request, reply) => {
+    auth.logout(request.cookies.commission_session);
+    reply.clearCookie('commission_session', { path: '/' });
+    return { ok: true };
   });
+  app.get('/api/invitations', async (request) => ({ invitations: invitations.list(actor(request)) }));
+  if (options.demoAuth === true) {
+    app.post<{ Body: InvitationInput }>('/api/invitations', {
+      schema: { body: { type: 'object', additionalProperties: false,
+        required: ['recipientHandle', 'brief', 'amount', 'visibility', 'nsfw', 'agreeToRules'], properties: {
+          recipientHandle: { type: 'string', minLength: 1, maxLength: 100 },
+          brief: { type: 'string', minLength: 1, maxLength: service.policy.maximumBriefLength },
+          amount: { type: 'integer', minimum: service.policy.minimumAmount, maximum: service.policy.maximumAmount },
+          visibility: { enum: ['public', 'anonymous', 'hidden'] }, nsfw: { type: 'boolean' }, agreeToRules: { const: true },
+        } } },
+    }, async (request, reply) => {
+      const user = actor(request);
+      const recipient = auth.resolveDemoRecipient(request.body.recipientHandle);
+      return reply.code(201).send(invitations.create(user, key(request), request.body, recipient));
+    });
+  }
+  app.post<{ Params: { id: string } }>('/api/invitations/:id/reissue', async (request) => invitations.reissue(actor(request), request.params.id, key(request)));
+  app.post<{ Params: { id: string } }>('/api/invitations/:id/withdraw', async (request) => invitations.withdraw(actor(request), request.params.id, key(request)));
+  app.get('/api/invitation', async (request) => invitations.read(identity(request).account, invitationToken(request)));
+  app.post<{ Body: { agreeToRules: boolean } }>('/api/invitation/accept', {
+    schema: { body: { type: 'object', required: ['agreeToRules'], additionalProperties: false, properties: { agreeToRules: { const: true } } } },
+  }, async (request) => invitations.accept(identity(request).account, invitationToken(request), key(request), request.body.agreeToRules));
+  app.post('/api/invitation/decline', async (request) => invitations.decline(identity(request).account, invitationToken(request), key(request)));
+  app.get('/api/invitation-preference', async (request) => invitations.preference(identity(request).account));
+  app.post<{ Body: { blocked: boolean } }>('/api/invitation-preference', {
+    schema: { body: { type: 'object', required: ['blocked'], additionalProperties: false, properties: { blocked: { type: 'boolean' } } } },
+  }, async (request) => invitations.setPreference(identity(request).account, request.body.blocked));
+  const expirationTimer = setInterval(() => {
+    try { invitations.expire(); } catch (error) { app.log.error(error); }
+  }, 1000);
+  expirationTimer.unref();
+  app.addHook('onClose', async () => { clearInterval(expirationTimer); });
   app.get('/api/session', async (request) => service.session(actor(request)));
   app.get('/api/requests', async (request) => ({ requests: service.list(actor(request)) }));
   app.get('/api/works', async () => ({ works: service.publicWorks() }));

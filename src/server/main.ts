@@ -8,7 +8,7 @@ const port = Number(process.env.COMMISSION_PORT ?? 3210);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('COMMISSION_PORT must be an integer from 1024 to 65535.');
 const store = new Store(resolve(process.env.COMMISSION_DATA_DIR ?? 'data', 'commission.sqlite'));
 const service = new CommissionService(store);
-const app = await buildApp(service, { logger: true });
+const app = await buildApp(service, { logger: true, demoAuth: true });
 const timer = setInterval(() => {
   try { service.expire(); } catch (error) { app.log.error(error); }
 }, 1000);
