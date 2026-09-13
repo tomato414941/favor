@@ -1,0 +1,16 @@
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+
+# Personal, environment-specific instructions
+AGENTS.override.md
+
+# Local application data
+data/
+*.log
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
