@@ -17,7 +17,7 @@ export async function buildApp(service: CommissionService, options: { staticRoot
       if (request.headers['x-commission-action'] !== '1') return reply.code(403).send({ message: '操作を確認できませんでした。' });
       const origin = request.headers.origin;
       if (origin) {
-        const allowed = [`http://${request.headers.host}`, 'http://localhost:5173', 'http://127.0.0.1:5173'];
+        const allowed = [`http://${request.headers.host}`, 'http://localhost:3211', 'http://127.0.0.1:3211'];
         if (!allowed.includes(origin)) return reply.code(403).send({ message: 'この送信元からは操作できません。' });
       }
     }
@@ -42,7 +42,11 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   };
   const key = (request: FastifyRequest): string => typeof request.headers['idempotency-key'] === 'string' ? request.headers['idempotency-key'] : '';
   app.get('/api/health', async () => ({ ok: true, mode: 'demo' }));
-  app.get('/api/creator', async () => ({ creator: service.creator(), limits: { brief: service.policy.maximumBriefLength, files: service.policy.maximumFiles, uploadBytes: service.policy.maximumUploadBytes } }));
+  app.get('/api/creator', async () => ({ creator: service.creator(), limits: { brief: service.policy.maximumBriefLength, files: service.policy.maximumFiles, uploadBytes: service.policy.maximumUploadBytes, maximumAmount: service.policy.maximumAmount } }));
+  app.get('/api/demo/session', async (request) => {
+    try { return service.session(actor(request)); }
+    catch (error) { if (error instanceof DomainError && error.statusCode === 401) return null; throw error; }
+  });
   app.post<{ Body: { role: 'client' | 'creator' } }>('/api/demo/session', {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: { enum: ['client', 'creator'] } } } },
   }, async (request, reply) => {

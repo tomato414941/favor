@@ -50,7 +50,7 @@ export class Store {
       ) STRICT;
     `);
     const add = this.db.prepare('INSERT OR IGNORE INTO users (id, name, role, points) VALUES (?, ?, ?, ?)');
-    add.run('demo-client', 'あなた', 'client', 50000);
+    add.run('demo-client', '青葉 / aoba', 'client', 50000);
     add.run('demo-creator', '凪 / nagi', 'creator', 0);
     add.run('other-client', '別の依頼者', 'client', 50000);
     add.run('other-creator', '別の作り手', 'creator', 0);

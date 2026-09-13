@@ -8,6 +8,8 @@ import { Store } from '../src/server/store.js';
 test('HTTP: session, validation, CSRF protection and complete transaction', async () => {
   const store = new Store(); const service = new CommissionService(store); const app = await buildApp(service);
   try {
+    assert.equal((await app.inject('/api/demo/session')).json(), null);
+    assert.equal((await app.inject('/api/creator')).json().limits.maximumAmount, service.policy.maximumAmount);
     assert.equal((await app.inject('/api/requests')).statusCode, 401);
     assert.equal((await app.inject({ url: '/api/health', headers: { host: 'attacker.example' } })).statusCode, 403);
     const payload = { role: 'client' };
@@ -18,6 +20,7 @@ test('HTTP: session, validation, CSRF protection and complete transaction', asyn
     assert.match(String(login.headers['set-cookie']), /HttpOnly/);
     assert.match(String(login.headers['set-cookie']), /SameSite=Strict/);
     const cookie = String(login.headers['set-cookie']).split(';')[0]!;
+    assert.equal((await app.inject({ url: '/api/demo/session', headers: { cookie } })).json().role, 'client');
     const headers = { cookie, 'x-commission-action': '1', 'idempotency-key': randomUUID() };
     const body = { creatorId: 'demo-creator', genre: 'text', brief: '星を題材にした物語をお願いします。', amount: 12000, visibility: 'anonymous', paymentMethod: 'points', nsfw: false, agreeToRules: true };
     const post = () => app.inject({ method: 'POST', url: '/api/requests', payload: body, headers });
