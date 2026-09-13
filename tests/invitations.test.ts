@@ -21,7 +21,7 @@ function setup(options: ConstructorParameters<typeof CommissionService>[3] = {})
   const store = new Store();
   const clock = () => now;
   const commissions = new CommissionService(store, clock, {}, options);
-  const auth = new AuthService(store, clock);
+  const auth = new AuthService(store, clock, { allowDemo: true });
   const invitations = new InvitationService(commissions, auth);
   const recipient = auth.resolveDemoRecipient('@mio_demo');
   const create = (overrides: Partial<InvitationInput> = {}, target: SocialAccount = recipient, actor = 'demo-client') => invitations.create(actor, key(), { ...input, ...overrides }, target);
@@ -204,13 +204,13 @@ test('session: persistent opaque tokens, expiry, logout, and nested rollback pre
   let now = 1_800_000_000_000;
   const clock = () => now;
   try {
-    let auth = new AuthService(store, clock);
+    let auth = new AuthService(store, clock, { allowDemo: true });
     const token = auth.demoLogin('client');
     assert.equal(store.db.prepare('SELECT token_hash FROM sessions').get()!.token_hash, hashToken(token));
     const commissions = new CommissionService(store, clock);
     const invitations = new InvitationService(commissions, auth);
     const created = invitations.create('demo-client', key(), input, auth.resolveDemoRecipient('@mio_demo'));
-    store.close(); store = new Store(path); auth = new AuthService(store, clock);
+    store.close(); store = new Store(path); auth = new AuthService(store, clock, { allowDemo: true });
     assert.equal(auth.actor(token), 'demo-client');
     assert.equal(new InvitationService(new CommissionService(store, clock), auth).list('demo-client')[0]!.id, created.invitation.id);
     assert.throws(() => store.transaction(() => {
@@ -252,6 +252,10 @@ test('HTTP invitation: anonymous, wrong-account, scanner, forged identity, CSRF 
       assert.equal(response.body.includes(String(input.amount)), false);
     }
     assert.equal((await app.inject({ method: 'POST', url: '/api/demo/identity', payload: { persona: 'social-mio', subject: 'social-mio' }, headers })).statusCode, 400);
+    const forged = await app.inject({ method: 'POST', url: '/api/demo/identity', payload: { persona: 'other', subject: 'social-mio', name: '澪 / mio' }, headers });
+    assert.equal(forged.statusCode, 200);
+    assert.equal(forged.json().account.subject, 'social-sora');
+    assert.equal((await app.inject({ url: '/api/invitation', headers: { ...proofHeaders, cookie: String(forged.headers['set-cookie']).split(';')[0]! } })).statusCode, 404);
     assert.equal((await app.inject({ method: 'POST', url: '/api/invitation/accept', payload: { agreeToRules: true }, headers: { ...headers, ...proofHeaders, cookie: wrong, 'idempotency-key': key() } })).statusCode, 404);
     const recipient = await login('/api/demo/identity', { persona: 'recipient' });
     const authorized = { ...proofHeaders, cookie: recipient };
@@ -280,7 +284,10 @@ test('HTTP invitation: anonymous, wrong-account, scanner, forged identity, CSRF 
 });
 
 test('HTTP: demo authentication and demo recipient lookup are absent unless explicitly enabled', async () => {
-  const store = new Store(); const app = await buildApp(new CommissionService(store));
+  const store = new Store();
+  const demoAuth = new AuthService(store, Date.now, { allowDemo: true });
+  const priorDemoToken = demoAuth.demoLogin('client');
+  const app = await buildApp(new CommissionService(store));
   try {
     for (const path of ['/api/demo/session', '/api/demo/identity', '/api/invitations']) {
       assert.equal((await app.inject({ method: 'POST', url: path, payload: {}, headers: { 'x-commission-action': '1' } })).statusCode, 404);
@@ -288,5 +295,8 @@ test('HTTP: demo authentication and demo recipient lookup are absent unless expl
     assert.equal((await app.inject('/api/demo/session')).statusCode, 404);
     assert.equal((await app.inject('/api/health')).json().demoAuth, false);
     assert.equal((await app.inject({ url: '/api/session', headers: { cookie: 'commission_session=demo-client' } })).statusCode, 401);
+    assert.equal((await app.inject({ url: '/api/session', headers: { cookie: `commission_session=${priorDemoToken}` } })).statusCode, 401);
+    assert.equal((await app.inject({ url: '/api/auth/identity', headers: { cookie: `commission_session=${priorDemoToken}` } })).json(), null);
+    assert.throws(() => new AuthService(store).demoLogin('client'), errorCode('DEMO_DISABLED'));
   } finally { await app.close(); store.close(); }
 });

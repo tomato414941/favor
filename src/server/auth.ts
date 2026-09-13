@@ -17,9 +17,14 @@ interface AccountRow { provider: string; subject: string; handle: string; name: 
 
 /** Authentication boundary. Demo accounts are available only through explicitly enabled demo routes. */
 export class AuthService {
-  constructor(readonly store: Store, readonly clock: () => number = Date.now) {}
+  constructor(readonly store: Store, readonly clock: () => number = Date.now, readonly options: { allowDemo?: boolean } = {}) {}
+
+  private requireDemo() {
+    if (this.options.allowDemo !== true) throw new DomainError('DEMO_DISABLED', '体験用の認証は利用できません。', 403);
+  }
 
   resolveDemoRecipient(handle: string): SocialAccount {
+    this.requireDemo();
     const normalized = handle.trim().replace(/^@/, '').toLowerCase();
     const account = Object.values(DEMO_ACCOUNTS).find((candidate) => candidate.handle === normalized);
     if (!account) throw new DomainError('RECIPIENT_NOT_FOUND', '体験用の宛先は @mio_demo または @sora_demo を指定してください。', 404);
@@ -28,6 +33,7 @@ export class AuthService {
   }
 
   demoLogin(persona: DemoPersona): string {
+    this.requireDemo();
     const account = DEMO_ACCOUNTS[persona];
     if (!account) throw new DomainError('INVALID_ACCOUNT', '体験するアカウントを選んでください。', 400);
     return this.store.transaction(() => {
@@ -50,6 +56,7 @@ export class AuthService {
     const row = this.store.db.prepare(`SELECT a.* FROM sessions s JOIN social_accounts a
       ON a.provider = s.provider AND a.subject = s.subject WHERE s.token_hash = ? AND s.expires_at > ?`).get(hashToken(token), this.clock()) as unknown as AccountRow | undefined;
     if (!row) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
+    if (row.provider === 'demo' && this.options.allowDemo !== true) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     return row;
   }
 

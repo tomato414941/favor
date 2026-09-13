@@ -11,7 +11,7 @@ import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
 export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean; demoAuth?: boolean } = {}) {
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 12 * 1024 * 1024 });
-  const auth = new AuthService(service.store, service.clock);
+  const auth = new AuthService(service.store, service.clock, { allowDemo: options.demoAuth === true });
   const invitations = new InvitationService(service, auth);
   await app.register(cookie);
   app.addHook('onRequest', async (request, reply) => {
