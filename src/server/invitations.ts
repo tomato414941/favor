@@ -81,6 +81,28 @@ export class InvitationService {
     return this.store.transaction(() => this.view(this.recipient(account, token), false));
   }
   /** recipient must come from a server-side provider lookup, never from a claimed browser ID. */
+  async createWithLookup(actor: string, key: string, input: InvitationInput, lookup: () => Promise<SocialAccount>): Promise<InvitationLinkResult> {
+    this.commissions.session(actor);
+    if (!/^[A-Za-z0-9_-]{8,100}$/.test(key)) throw new DomainError('BAD_KEY', '操作を再読み込みしてお試しください。', 400);
+    const fingerprint = commandFingerprint({ ...input, brief: input.brief.trim() });
+    const prior = () => {
+      const row = this.store.db.prepare('SELECT * FROM invitation_submissions WHERE actor_id = ? AND key = ?').get(actor, key);
+      if (!row) return null;
+      if (row.fingerprint !== fingerprint) throw new DomainError('KEY_REUSED', '同じ操作キーで内容を変更することはできません。');
+      this.expire();
+      return { invitation: this.view(this.owner(actor, String(row.invitation_id)), true) };
+    };
+    const existing = prior();
+    if (existing) return existing;
+    const recipient = await lookup();
+    return this.store.transaction(() => {
+      const concurrent = prior();
+      if (concurrent) return concurrent;
+      const result = this.create(actor, key, input, recipient);
+      this.store.db.prepare('INSERT INTO invitation_submissions VALUES (?, ?, ?, ?)').run(actor, key, fingerprint, result.invitation.id);
+      return result;
+    });
+  }
   create(actor: string, key: string, input: InvitationInput, recipient: SocialAccount): InvitationLinkResult {
     this.commissions.session(actor);
     this.expire();

@@ -1,28 +1,36 @@
-import Fastify from 'fastify';
+import Fastify, { LogController } from 'fastify';
 import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { InvitationInput, RequestInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
-import { AuthService, type DemoPersona } from './auth.js';
+import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { InvitationService } from './invitations.js';
+import { normalizeXHandle, XAuth, XProvider } from './x-auth.js';
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
-export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean; demoAuth?: boolean } = {}) {
-  const app = Fastify({ logger: options.logger ?? false, bodyLimit: 12 * 1024 * 1024 });
-  const auth = new AuthService(service.store, service.clock, { allowDemo: options.demoAuth === true });
+export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean; demoAuth?: boolean; xProvider?: XProvider } = {}) {
+  if (options.demoAuth && options.xProvider) throw new Error('Demo and X authentication cannot be enabled together.');
+  // OAuth query strings and invitation headers must not enter request logs.
+  const app = Fastify({ logger: options.logger ?? false, logController: new LogController({ disableRequestLogging: true }), bodyLimit: 12 * 1024 * 1024 });
+  const auth = new AuthService(service.store, service.clock, { allowDemo: options.demoAuth === true, allowX: Boolean(options.xProvider) });
+  const x = options.xProvider ? new XAuth(auth, options.xProvider) : null;
+  const publicOrigin = options.xProvider?.publicOrigin;
+  const sessionCookie = { httpOnly: true, sameSite: 'strict' as const, path: '/', maxAge: 86400, secure: options.xProvider?.secureCookies ?? false };
+  const flowCookie = { httpOnly: true, sameSite: 'lax' as const, path: '/api/auth', maxAge: 600, secure: sessionCookie.secure };
   const invitations = new InvitationService(service, auth);
   await app.register(cookie);
   app.addHook('onRequest', async (request, reply) => {
-    if (!['localhost', '127.0.0.1'].includes(request.hostname)) return reply.code(403).send({ message: 'ローカル環境から利用してください。' });
+    if ((publicOrigin && new URL(publicOrigin).host !== request.headers.host) || (!publicOrigin && !['localhost', '127.0.0.1'].includes(request.hostname))) return reply.code(403).send({ message: 'アクセス先のURLを確認してください。' });
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
       if (request.headers['x-commission-action'] !== '1') return reply.code(403).send({ message: '操作を確認できませんでした。' });
       const origin = request.headers.origin;
       if (origin) {
-        const allowed = [`http://${request.headers.host}`, 'http://localhost:3211', 'http://127.0.0.1:3211'];
+        const allowed = publicOrigin ? [publicOrigin] : [`http://${request.headers.host}`, 'http://localhost:3211', 'http://127.0.0.1:3211'];
         if (!allowed.includes(origin)) return reply.code(403).send({ message: 'この送信元からは操作できません。' });
       }
+      if (request.headers['sec-fetch-site'] === 'cross-site') return reply.code(403).send({ message: 'この送信元からは操作できません。' });
     }
   });
   app.addHook('onSend', async (request, reply) => {
@@ -34,7 +42,7 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   app.setErrorHandler<FastifyError>((error, _request, reply) => {
     if (error instanceof DomainError) return reply.code(error.statusCode).send({ code: error.code, message: error.message });
     if (error.validation || (error.statusCode && error.statusCode < 500)) return reply.code(error.statusCode ?? 400).send({ message: '入力内容または送信形式を確認してください。' });
-    app.log.error(error);
+    app.log.error({ code: error.code }, 'Request failed');
     return reply.code(500).send({ message: '処理を完了できませんでした。時間をおいてお試しください。' });
   });
   const actor = (request: FastifyRequest): string => auth.actor(request.cookies.commission_session);
@@ -43,11 +51,32 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   const login = (request: FastifyRequest, reply: FastifyReply, persona: DemoPersona) => {
     auth.logout(request.cookies.commission_session);
     const token = auth.demoLogin(persona);
-    reply.setCookie('commission_session', token, { httpOnly: true, sameSite: 'strict', path: '/', maxAge: 86400 });
+    reply.setCookie('commission_session', token, sessionCookie);
     return token;
   };
   const key = (request: FastifyRequest): string => typeof request.headers['idempotency-key'] === 'string' ? request.headers['idempotency-key'] : '';
   app.get('/api/health', async () => ({ ok: true, mode: 'demo', demoAuth: options.demoAuth === true }));
+  app.get('/api/auth/options', async () => ({ mode: x ? 'x' : options.demoAuth ? 'demo' : 'disabled', xLogin: Boolean(x), invitationLookup: options.demoAuth === true || Boolean(x?.provider.lookupEnabled) }));
+  if (x) {
+    app.post('/api/auth/x/start', { schema: { body: { type: 'object', additionalProperties: false, maxProperties: 0 } } }, async (request, reply) => {
+      const flow = x.start(request.ip, request.cookies.commission_oauth, request.cookies.commission_session);
+      reply.setCookie('commission_oauth', flow.browser, flowCookie);
+      return { url: flow.url };
+    });
+    app.get<{ Querystring: Record<string, unknown> }>('/api/auth/x/callback', { exposeHeadRoute: false }, async (request, reply) => {
+      let outcome = 'success';
+      try {
+        const token = await x.finish(request.cookies.commission_oauth, request.query);
+        reply.setCookie('commission_session', token, sessionCookie);
+      } catch (error) {
+        outcome = error instanceof DomainError && error.code === 'OAUTH_CANCELLED' ? 'cancelled'
+          : error instanceof DomainError && error.code === 'OAUTH_EXPIRED' ? 'expired' : 'failed';
+      }
+      if (outcome !== 'expired') reply.clearCookie('commission_oauth', flowCookie);
+      const flow = isToken(request.query.state) ? `&flow=${request.query.state}` : '';
+      return reply.redirect(`${publicOrigin}/#auth=${outcome}${flow}`, 303);
+    });
+  }
   app.get('/api/creator', async () => ({ creator: service.creator(), limits: { brief: service.policy.maximumBriefLength, files: service.policy.maximumFiles, uploadBytes: service.policy.maximumUploadBytes, maximumAmount: service.policy.maximumAmount } }));
   if (options.demoAuth === true) {
     app.get('/api/demo/session', async (request) => {
@@ -69,11 +98,16 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   });
   app.post('/api/auth/logout', async (request, reply) => {
     auth.logout(request.cookies.commission_session);
-    reply.clearCookie('commission_session', { path: '/' });
+    x?.cancel(request.cookies.commission_oauth);
+    reply.clearCookie('commission_session', sessionCookie);
+    reply.clearCookie('commission_oauth', flowCookie);
     return { ok: true };
   });
+  app.post<{ Body: { agreeToRules: boolean } }>('/api/auth/register', {
+    schema: { body: { type: 'object', required: ['agreeToRules'], additionalProperties: false, properties: { agreeToRules: { const: true } } } },
+  }, async (request) => service.session(auth.registerAccount(request.cookies.commission_session, request.body.agreeToRules)));
   app.get('/api/invitations', async (request) => ({ invitations: invitations.list(actor(request)) }));
-  if (options.demoAuth === true) {
+  if (options.demoAuth === true || x) {
     app.post<{ Body: InvitationInput }>('/api/invitations', {
       schema: { body: { type: 'object', additionalProperties: false,
         required: ['recipientHandle', 'brief', 'amount', 'visibility', 'nsfw', 'agreeToRules'], properties: {
@@ -84,6 +118,13 @@ export async function buildApp(service: CommissionService, options: { staticRoot
         } } },
     }, async (request, reply) => {
       const user = actor(request);
+      if (x) {
+        const input = { ...request.body, recipientHandle: normalizeXHandle(request.body.recipientHandle) };
+        return reply.code(201).send(await invitations.createWithLookup(user, key(request), input, () => {
+          x.limit(`lookup:${user}`, 30);
+          return x.provider.lookup(input.recipientHandle);
+        }));
+      }
       const recipient = auth.resolveDemoRecipient(request.body.recipientHandle);
       return reply.code(201).send(invitations.create(user, key(request), request.body, recipient));
     });
@@ -100,7 +141,7 @@ export async function buildApp(service: CommissionService, options: { staticRoot
     schema: { body: { type: 'object', required: ['blocked'], additionalProperties: false, properties: { blocked: { type: 'boolean' } } } },
   }, async (request) => invitations.setPreference(identity(request).account, request.body.blocked));
   const expirationTimer = setInterval(() => {
-    try { invitations.expire(); } catch (error) { app.log.error(error); }
+    try { invitations.expire(); x?.cleanup(); } catch { app.log.error('Expiration failed'); }
   }, 1000);
   expirationTimer.unref();
   app.addHook('onClose', async () => { clearInterval(expirationTimer); });

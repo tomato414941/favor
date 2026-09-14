@@ -71,6 +71,20 @@ export class Store {
         token_hash TEXT NOT NULL UNIQUE, cancelled_reason TEXT,
         request_id TEXT REFERENCES requests(id)
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS oauth_flows (
+        state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL UNIQUE,
+        verifier TEXT NOT NULL, previous_session_hash TEXT, expires_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS auth_limits (
+        bucket TEXT PRIMARY KEY, started_at INTEGER NOT NULL, attempts INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS registration_consents (
+        user_id TEXT PRIMARY KEY REFERENCES users(id), version TEXT NOT NULL, accepted_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS invitation_submissions (
+        actor_id TEXT NOT NULL REFERENCES users(id), key TEXT NOT NULL, fingerprint TEXT NOT NULL,
+        invitation_id TEXT NOT NULL REFERENCES invitations(id), PRIMARY KEY (actor_id, key)
+      ) STRICT;
       CREATE INDEX IF NOT EXISTS invitations_client ON invitations(client_id, created_at);
       CREATE INDEX IF NOT EXISTS invitations_recipient ON invitations(recipient_provider, recipient_subject, state);
       CREATE TABLE IF NOT EXISTS invitation_commands (

@@ -50,6 +50,11 @@ export interface IdentitySession {
   account: SocialAccount;
   registered: boolean;
 }
+export interface AuthOptions {
+  mode: 'demo' | 'x' | 'disabled';
+  xLogin: boolean;
+  invitationLookup: boolean;
+}
 export interface InvitationInput {
   recipientHandle: string;
   brief: string;
