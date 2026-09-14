@@ -252,6 +252,29 @@ textarea::placeholder { color: #81857b; }
 .invitation-preferences h2 { font-size: 13px; font-weight: 400; }
 .invitation-preferences p { font-size: 10px; line-height: 1.9; color: var(--muted); margin-top: 10px; }
 .invitation-preferences .text-button { font-size: 10px; }
+.account-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 480px); gap: 70px; min-height: 65vh; padding-block: 66px 20px; align-items: start; }
+.account-intro { padding-top: 24px; }
+.account-intro h1 { font-size: clamp(32px, 3.7vw, 46px); font-weight: 400; line-height: 1.7; letter-spacing: .05em; margin-top: 23px; }
+.account-intro > p:last-of-type { color: var(--muted); font-size: 13px; line-height: 2.2; margin-top: 24px; }
+.account-signature { display: block; margin: 40px 0 0 50%; font-family: var(--serif); font-size: 28px; line-height: 1.15; transform: rotate(-6deg); color: var(--muted); }
+.account-signature i { color: var(--terra); }
+.account-panel { border: 1px solid var(--line); border-radius: 5px; padding: 36px; background: var(--white); min-width: 0; }
+.account-panel h2 { font-size: 24px; font-weight: 400; line-height: 1.7; margin: 16px 0 24px; }
+.account-copy { color: var(--muted); font-size: 12px; line-height: 2.1; }
+.account-panel .x-login-control { margin-top: 27px; }
+.account-panel .primary { width: 100%; }
+.account-privacy { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 19px; }
+.registration-identity { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 14px; background: #edf0e4; padding: 18px; margin-bottom: 23px; }
+.registration-identity strong { font-size: 15px; font-weight: 400; overflow-wrap: anywhere; }
+.registration-identity > span { font-size: 11px; color: var(--muted); grid-column: 1; overflow-wrap: anywhere; }
+.registration-identity button { grid-row: 1 / 3; grid-column: 2; align-self: center; font-size: 10px; }
+.registration-rules { padding-left: 19px; font-size: 11px; line-height: 2; color: var(--muted); margin: 21px 0; }
+.registration-rules li { padding-left: 3px; margin-bottom: 8px; }
+.registration-agreement { margin: 24px 0; }
+.account-menu { display: flex; align-items: center; gap: 16px; margin-left: auto; min-width: 0; }
+.account-menu > span { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.x-invitation-identity { grid-column: 1 / -1; border-top: 1px solid #d1d8c5; padding-top: 19px; }
+.identity-card h2 { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: no-preference) {
   .intro, .compose-layout, .requests-section { animation: appear .5s both; }
   .compose-layout { animation-delay: .08s; }
@@ -354,6 +377,15 @@ textarea::placeholder { color: #81857b; }
   .identity-card { padding: 23px 20px; gap: 17px; }
   .demo-identities .action-buttons { flex-direction: row; }
   .demo-identities .quiet-button { font-size: 10px; flex: 1; padding-inline: 12px; }
+  .account-layout { grid-template-columns: minmax(0, 1fr); gap: 31px; padding-top: 30px; }
+  .account-intro { padding-top: 0; }
+  .account-intro h1 { font-size: 31px; margin-top: 17px; }
+  .account-intro > p:last-of-type { font-size: 12px; margin-top: 16px; }
+  .account-signature { display: none; }
+  .account-panel { padding: 27px 22px; }
+  .account-panel h2 { font-size: 22px; }
+  .account-menu { gap: 10px; }
+  .account-menu > span { max-width: 120px; }
 }
 @media (max-width: 480px) {
   .intro-note { display: none; }
@@ -377,4 +409,8 @@ textarea::placeholder { color: #81857b; }
   .creator-card { grid-template-columns: 94px 1fr; gap: 16px; }
   .creator-art { height: 124px; }
   .art-sun { left: 49px; }
+  .account-menu { width: 100%; justify-content: space-between; margin: 15px 0 2px; }
+  .account-menu > span { max-width: 200px; }
+  .registration-identity { grid-template-columns: minmax(0, 1fr); }
+  .registration-identity button { grid-row: auto; grid-column: 1; justify-self: start; }
 }

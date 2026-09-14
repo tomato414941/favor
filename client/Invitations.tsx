@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { paymentLabels, type IdentitySession, type InvitationInput, type InvitationLinkResult, type InvitationView, type RequestInput, type SessionView, type Visibility } from '../src/shared';
+import { paymentLabels, type AuthOptions, type IdentitySession, type InvitationInput, type InvitationLinkResult, type InvitationView, type RequestInput, type SessionView, type Visibility } from '../src/shared';
 import { api } from './api';
 import { RequestForm, type RequestFormSettings } from './RequestForm';
 import { Arrow } from './ui';
+import { XLoginButton } from './Auth';
 
 const yen = (value: number) => `¥${new Intl.NumberFormat('ja-JP').format(value)}`;
 const date = (value: number) => new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(value);
@@ -53,7 +54,8 @@ function InvitationFacts({ invitation }: { invitation: InvitationView }) {
   </>;
 }
 
-export function Invitations({ settings, session, openRequest }: { settings: RequestFormSettings; session: SessionView; openRequest: (id: string) => void }) {
+export function Invitations({ settings, session, options, openRequest }: { settings: RequestFormSettings; session: SessionView; options: AuthOptions; openRequest: (id: string) => void }) {
+  const demo = options.mode === 'demo';
   const [items, setItems] = useState<InvitationView[]>([]);
   const [handle, setHandle] = useState('');
   const [compose, setCompose] = useState(true);
@@ -117,8 +119,8 @@ export function Invitations({ settings, session, openRequest }: { settings: Requ
     {actions.error && <div className="message error" role="alert">{actions.error}</div>}
     {notice && <div className="message success" role="status">{notice}</div>}
     {compose ? <div className="compose-layout invitation-compose">
-      <aside className="invitation-guide"><span className="envelope-mark" aria-hidden="true">↗</span><h2>受け取るところから、<br />はじめられる。</h2><ol><li>相手を指定して、リンクを作る。</li><li>相手が受け付けている連絡先で共有する。</li><li>相手がアカウントを確認し、受けるか選ぶ。</li></ol><p>内容を確認するだけなら登録は不要です。受諾するときに登録します。</p><p>リンクの作成だけでは、相手への通知は送られません。</p><p className="hint">現在は体験用のSNSアカウント・決済を使用します。実際のSNSへの接続や請求はありません。</p></aside>
-      <RequestForm settings={settings} session={session} busy={actions.busy} submit={submit} invitation={{ handle, changeHandle: setHandle }} />
+      <aside className="invitation-guide"><span className="envelope-mark" aria-hidden="true">↗</span><h2>受け取るところから、<br />はじめられる。</h2><ol><li>相手を指定して、リンクを作る。</li><li>相手が受け付けている連絡先で共有する。</li><li>相手がアカウントを確認し、受けるか選ぶ。</li></ol><p>内容を確認するだけなら登録は不要です。受諾するときに登録します。</p><p>リンクの作成だけでは、相手への通知は送られません。</p><p className="hint">{demo ? '現在は体験用のSNSアカウント・決済を使用します。実際のSNSへの接続や請求はありません。' : '宛先のXアカウントで確認した本人だけが、招待の内容を読めます。決済・金額・期限は体験用です。実際の請求は発生しません。'}</p>{!options.invitationLookup && <p className="inline-error" role="status">現在、招待先の確認を利用できません。作成済みの招待は下で確認できます。</p>}</aside>
+      <RequestForm settings={settings} session={session} busy={actions.busy || !options.invitationLookup} submit={submit} invitation={{ handle, changeHandle: setHandle, demo }} />
     </div> : <button className="quiet-button new-invitation" onClick={() => { setCompose(true); setNotice(''); setHandle(''); }}>別の招待を作る <Arrow /></button>}
     <div className="invitation-list-heading"><h2>作成した招待</h2><button className="text-button" disabled={actions.busy} onClick={() => void actions.run(refresh)}>最新の状態を確認</button></div>
     {items.length === 0 ? <p className="empty-invitations">まだ招待はありません。</p> : <div className="invitation-list">
@@ -137,7 +139,8 @@ export function Invitations({ settings, session, openRequest }: { settings: Requ
   </section>;
 }
 
-export function InvitationLanding({ token }: { token: string }) {
+export function InvitationLanding({ token, options, initialError }: { token: string; options: AuthOptions; initialError: string }) {
+  const demo = options.mode === 'demo';
   const [identity, setIdentity] = useState<IdentitySession | null>(null);
   const [invitation, setInvitation] = useState<InvitationView | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -195,11 +198,12 @@ export function InvitationLanding({ token }: { token: string }) {
   }
 
   return <>
-    <div className="demo-banner"><span className="demo-mark">DEMO</span>体験用のSNSアカウント · 実際の請求は発生しません</div>
+    <div className="demo-banner"><span className="demo-mark">DEMO</span>{demo ? '体験用のSNSアカウント · 実際の請求は発生しません' : '決済は体験用 · 実際の請求は発生しません'}</div>
     <header className="header shell invitation-header"><a className="wordmark" href="/">commission<span>↗</span></a><span>創作への招待</span></header>
     <main className="shell invitation-landing">
       <div className="invitation-intro"><p className="eyebrow">SOMETHING TO CREATE</p><h1>あなたの創作に、<br />届いた招待。</h1><p>宛先のSNSアカウントで確認すると、<br />依頼内容と金額を読むことができます。</p></div>
       <div className="invitation-reader">
+        {initialError && <div className="message error" role="alert">{initialError}</div>}
         {actions.error && <div className="message error" role="alert">{actions.error} <button disabled={actions.busy} onClick={() => void actions.run(load)}>再確認</button></div>}
         {notice && <div className="message success" role="status">{notice}</div>}
         {!ready && !actions.error && <p className="loading" role="status">招待を開いています…</p>}
@@ -207,7 +211,7 @@ export function InvitationLanding({ token }: { token: string }) {
           <div><p className="eyebrow">ACCOUNT</p><h2>{identity ? identity.account.name : 'アカウントを確認'}</h2>
             <p>{identity ? `@${identity.account.handle} · ${identity.registered ? '登録済み' : 'サービスには未登録'}` : '確認するだけでは、サービスへの登録は行われません。'}</p></div>
           {identity && <button className="text-button" disabled={actions.busy} onClick={() => void logout()}>ログアウト</button>}
-          <div className="demo-identities"><span>体験用SNSアカウント</span><div className="action-buttons"><button className="quiet-button" disabled={actions.busy} onClick={() => void authenticate('recipient')}>澪のアカウントで確認</button><button className="quiet-button" disabled={actions.busy} onClick={() => void authenticate('other')}>空のアカウントで確認</button></div><p className="hint">実際のSNSへの接続や投稿は行いません。</p></div>
+          {demo ? <div className="demo-identities"><span>体験用SNSアカウント</span><div className="action-buttons"><button className="quiet-button" disabled={actions.busy} onClick={() => void authenticate('recipient')}>澪のアカウントで確認</button><button className="quiet-button" disabled={actions.busy} onClick={() => void authenticate('other')}>空のアカウントで確認</button></div><p className="hint">実際のSNSへの接続や投稿は行いません。</p></div> : <div className="x-invitation-identity">{!identity && (options.xLogin ? <XLoginButton label="Xでアカウントを確認" disabled={actions.busy} /> : <p>現在、アカウントの確認を利用できません。</p>)}<p className="hint">XのユーザーID・表示名・ユーザー名を、ログインと招待先の確認に使用します。登録すると、表示名は依頼者・作り手の名前として使われます。あなたの代わりに投稿・DMを送ることはありません。</p></div>}
         </section>
         {invitation && <article className="request-detail" aria-label="届いた招待">
           <div className="detail-heading"><span className="eyebrow">INVITATION DETAILS</span><span className="status"><i />{invitation.state === 'pending' ? '受諾待ち' : invitation.state === 'accepted' ? '受諾済み' : '受付終了'}</span></div>

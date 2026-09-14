@@ -7,13 +7,14 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const directory = await mkdtemp(join(tmpdir(), 'commission-e2e-data-'));
+const xAuth = process.argv.includes('--x');
 const probe = createServer();
 probe.listen(0, '127.0.0.1');
 await once(probe, 'listening');
 const port = probe.address().port;
 await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()));
-const server = spawn(process.execPath, ['dist/server/server/main.js', '--demo'], {
-  env: { ...process.env, COMMISSION_DATA_DIR: directory, COMMISSION_PORT: String(port) },
+const server = spawn(process.execPath, xAuth ? ['--import', 'tsx', 'tests/browser_x_server.ts'] : ['dist/server/server/main.js', '--demo'], {
+  env: { ...process.env, COMMISSION_AUTH_MODE: 'demo', COMMISSION_DATA_DIR: directory, COMMISSION_PORT: String(port) },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
@@ -36,7 +37,7 @@ try {
     await delay(200);
   }
   if (!ready) throw new Error(`Demo server did not start: ${logs}`);
-  browser = spawn('python3', ['tests/browser.py', url], { stdio: 'inherit' });
+  browser = spawn('python3', [xAuth ? 'tests/browser_x.py' : 'tests/browser.py', url], { stdio: 'inherit', env: { ...process.env, PYTHONUNBUFFERED: '1' } });
   const [code] = await once(browser, 'exit');
   process.exitCode = code ?? 1;
 } catch (error) {

@@ -11,7 +11,7 @@ const yen = (value: number) => `¥${number.format(value)}`;
 
 export function RequestForm({ settings: { creator, limits }, session, busy, submit, invitation }: {
   settings: RequestFormSettings; session: SessionView; busy: boolean; submit: (input: RequestInput) => Promise<void>;
-  invitation?: { handle: string; changeHandle: (handle: string) => void };
+  invitation?: { handle: string; changeHandle: (handle: string) => void; demo: boolean };
 }) {
   const [brief, setBrief] = useState('');
   const [amount, setAmount] = useState(String(creator.recommendedAmount));
@@ -26,7 +26,7 @@ export function RequestForm({ settings: { creator, limits }, session, busy, subm
   return <form className="request-form" onSubmit={(event) => void onSubmit(event)}>
     <div className="form-heading"><span className="eyebrow">{invitation ? 'NEW INVITATION' : 'NEW REQUEST'}</span><h2>{invitation ? '招待リンクを作成' : '依頼を送る'}</h2><p>一度のメッセージに、お願いしたいことをまとめて。</p></div>
     <fieldset disabled={busy} className="form-fields">
-      {invitation && <div className="field"><label htmlFor="recipient-handle">相手のSNSアカウント</label><input id="recipient-handle" className="text-input" value={invitation.handle} onChange={(event) => invitation.changeHandle(event.target.value)} maxLength={100} required autoCapitalize="none" autoComplete="off" spellCheck={false} placeholder="@mio_demo" aria-describedby="recipient-hint" /><p className="hint" id="recipient-hint">体験用の宛先：@mio_demo（澪）・@sora_demo（空）</p></div>}
+      {invitation && <div className="field"><label htmlFor="recipient-handle">{invitation.demo ? '相手のSNSアカウント' : '相手のXアカウント'}</label><input id="recipient-handle" className="text-input" value={invitation.handle} onChange={(event) => invitation.changeHandle(event.target.value)} maxLength={100} required autoCapitalize="none" autoComplete="off" spellCheck={false} placeholder={invitation.demo ? '@mio_demo' : '@username または https://x.com/username'} aria-describedby="recipient-hint" /><p className="hint" id="recipient-hint">{invitation.demo ? '体験用の宛先：@mio_demo（澪）・@sora_demo（空）' : '表示名ではなく、@から始まるユーザー名かプロフィールURLを指定してください。'}</p></div>}
       <div className="field"><div className="label-row"><label htmlFor="brief">依頼内容</label><span className="required-label">必須</span></div><textarea id="brief" value={brief} onChange={(event) => setBrief(event.target.value)} required maxLength={limits.brief} rows={7} placeholder="描いてほしい風景や、聴いてみたい言葉。好きなところや参考資料のURLも、こちらに。" aria-describedby="brief-hint brief-count" /><div className="field-meta"><span id="brief-hint">送信後の打ち合わせやリテイク要求はできません。</span><span id="brief-count">{number.format(brief.length)} / {number.format(limits.brief)}</span></div></div>
       <div className="field"><label htmlFor="amount">依頼金額</label><div className="amount-row"><div className="amount-input"><span aria-hidden="true">¥</span><input id="amount" type="number" inputMode="numeric" min={creator.minimumAmount} max={limits.maximumAmount} step="1" value={amount} onChange={(event) => setAmount(event.target.value)} required aria-describedby="amount-hint" /></div><button type="button" className="text-button" onClick={() => setAmount(String(creator.recommendedAmount))}>推奨額にする</button></div><p className="hint" id="amount-hint">最低 {yen(creator.minimumAmount)} · 金額は第三者には公開されません。</p></div>
       <fieldset className="field visibility-options"><legend>公開範囲</legend><div className="choice-grid">
