@@ -11,7 +11,7 @@
 ## 仕様資料
 
 - [基本仕様](docs/requirements.md)：基本ルール、取引の流れ、未決定事項。
-- [X認証の接続設定](docs/x-setup.md)：既存Xアプリの確認、認証情報・Callback URL、検証範囲。
+- [X認証の接続設定](docs/x-setup.md)：commission固有の設定値・制約、X公式資料へのリンク。
 
 ## 構成・起動
 
