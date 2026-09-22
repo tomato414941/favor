@@ -2,7 +2,7 @@ export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-export async function api<T>(path: string, body?: unknown, key?: string, invitationToken?: string): Promise<T> {
+export async function api<T>(path: string, body?: unknown, key?: string, invitationToken?: string, linkToken?: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
@@ -10,6 +10,7 @@ export async function api<T>(path: string, body?: unknown, key?: string, invitat
       credentials: 'same-origin',
       headers: {
         ...(invitationToken ? { 'X-Commission-Invitation': invitationToken } : {}),
+        ...(linkToken ? { 'X-Commission-Link': linkToken } : {}),
         ...(body === undefined ? {} : {
           'Content-Type': 'application/json', 'X-Commission-Action': '1',
           ...(key ? { 'Idempotency-Key': key } : {}),

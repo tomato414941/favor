@@ -3,18 +3,20 @@ import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { InvitationInput, RequestInput, UploadInput } from '../shared.js';
+import type { InvitationInput, InvitationLinkResult, InvitationView, LocalCredentials, LocalRegistration, RequestInput, RequestLinkInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
 import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { InvitationService } from './invitations.js';
 import { normalizeXHandle, XAuth, XProvider } from './x-auth.js';
+import { LocalAuth } from './local-auth.js';
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
-export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean; demoAuth?: boolean; xProvider?: XProvider } = {}) {
+export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean; demoAuth?: boolean; localAuth?: boolean; xProvider?: XProvider } = {}) {
   if (options.demoAuth && options.xProvider) throw new Error('Demo and X authentication cannot be enabled together.');
   // OAuth query strings and invitation headers must not enter request logs.
   const app = Fastify({ logger: options.logger ?? false, logController: new LogController({ disableRequestLogging: true }), bodyLimit: 12 * 1024 * 1024 });
-  const auth = new AuthService(service.store, service.clock, { allowDemo: options.demoAuth === true, allowX: Boolean(options.xProvider) });
+  const auth = new AuthService(service.store, service.clock, { allowDemo: options.demoAuth === true, allowX: Boolean(options.xProvider), allowLocal: options.localAuth === true });
+  const local = options.localAuth ? new LocalAuth(auth) : null;
   const x = options.xProvider ? new XAuth(auth, options.xProvider) : null;
   const publicOrigin = options.xProvider?.publicOrigin;
   const sessionCookie = { httpOnly: true, sameSite: 'strict' as const, path: '/', maxAge: 86400, secure: options.xProvider?.secureCookies ?? false };
@@ -47,6 +49,10 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   });
   const actor = (request: FastifyRequest): string => auth.actor(request.cookies.commission_session);
   const identity = (request: FastifyRequest) => auth.identity(request.cookies.commission_session);
+  const optionalAccount = (request: FastifyRequest) => {
+    try { return identity(request).account; }
+    catch (error) { if (error instanceof DomainError && error.statusCode === 401) return undefined; throw error; }
+  };
   const invitationToken = (request: FastifyRequest): string => typeof request.headers['x-commission-invitation'] === 'string' ? request.headers['x-commission-invitation'] : '';
   const login = (request: FastifyRequest, reply: FastifyReply, persona: DemoPersona) => {
     auth.logout(request.cookies.commission_session);
@@ -56,7 +62,28 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   };
   const key = (request: FastifyRequest): string => typeof request.headers['idempotency-key'] === 'string' ? request.headers['idempotency-key'] : '';
   app.get('/api/health', async () => ({ ok: true, mode: 'demo', demoAuth: options.demoAuth === true }));
-  app.get('/api/auth/options', async () => ({ mode: x ? 'x' : options.demoAuth ? 'demo' : 'disabled', xLogin: Boolean(x), invitationLookup: options.demoAuth === true || Boolean(x?.provider.lookupEnabled) }));
+  app.get('/api/auth/options', async () => ({ mode: x ? 'x' : options.demoAuth ? 'demo' : local ? 'local' : 'disabled', xLogin: Boolean(x), invitationLookup: options.demoAuth === true || Boolean(x?.provider.lookupEnabled), ...(local ? { localLogin: true } : {}) }));
+  if (local) {
+    const credentialProperties = { login: { type: 'string', minLength: 3, maxLength: 32 }, password: { type: 'string', minLength: 12, maxLength: 1024 } };
+    app.post<{ Body: LocalRegistration }>('/api/auth/local/register', {
+      schema: { body: { type: 'object', additionalProperties: false, required: ['login', 'password', 'name', 'agreeToRules'], properties: {
+        ...credentialProperties, name: { type: 'string', minLength: 1, maxLength: 80 }, agreeToRules: { const: true },
+      } } },
+    }, async (request, reply) => {
+      auth.limit(`local:${request.ip}`);
+      const token = await local.register(request.body, request.cookies.commission_session);
+      reply.setCookie('commission_session', token, sessionCookie);
+      return auth.identity(token);
+    });
+    app.post<{ Body: LocalCredentials }>('/api/auth/local/login', {
+      schema: { body: { type: 'object', additionalProperties: false, required: ['login', 'password'], properties: credentialProperties } },
+    }, async (request, reply) => {
+      auth.limit(`local:${request.ip}`);
+      const token = await local.login(request.body, request.cookies.commission_session);
+      reply.setCookie('commission_session', token, sessionCookie);
+      return auth.identity(token);
+    });
+  }
   if (x) {
     app.post('/api/auth/x/start', { schema: { body: { type: 'object', additionalProperties: false, maxProperties: 0 } } }, async (request, reply) => {
       const flow = x.start(request.ip, request.cookies.commission_oauth, request.cookies.commission_session);
@@ -78,6 +105,12 @@ export async function buildApp(service: CommissionService, options: { staticRoot
     });
   }
   app.get('/api/creator', async () => ({ creator: service.creator(), limits: { brief: service.policy.maximumBriefLength, files: service.policy.maximumFiles, uploadBytes: service.policy.maximumUploadBytes, maximumAmount: service.policy.maximumAmount } }));
+  app.get('/api/request-settings', async () => ({
+    terms: { recommendedAmount: service.policy.recommendedAmount, minimumAmount: service.policy.minimumAmount,
+      acceptanceDays: Math.min(service.policy.acceptanceMs, service.policy.authorizationMs, service.policy.deliveryMs) / 86_400_000,
+      deliveryDays: service.policy.deliveryMs / 86_400_000 },
+    limits: { brief: service.policy.maximumBriefLength, files: service.policy.maximumFiles, uploadBytes: service.policy.maximumUploadBytes, maximumAmount: service.policy.maximumAmount },
+  }));
   if (options.demoAuth === true) {
     app.get('/api/demo/session', async (request) => {
       try { return service.session(actor(request)); }
@@ -106,6 +139,24 @@ export async function buildApp(service: CommissionService, options: { staticRoot
   app.post<{ Body: { agreeToRules: boolean } }>('/api/auth/register', {
     schema: { body: { type: 'object', required: ['agreeToRules'], additionalProperties: false, properties: { agreeToRules: { const: true } } } },
   }, async (request) => service.session(auth.registerAccount(request.cookies.commission_session, request.body.agreeToRules)));
+  const linkToken = (request: FastifyRequest): string => typeof request.headers['x-commission-link'] === 'string' ? request.headers['x-commission-link'] : '';
+  const linkView = ({ recipientHandle: _handle, ...view }: InvitationView) => view;
+  const linkResult = ({ invitation, ...rest }: InvitationLinkResult) => ({ link: linkView(invitation), ...rest });
+  app.get('/api/links', async (request) => ({ links: invitations.listLinks(actor(request)).map(linkView) }));
+  app.post<{ Body: RequestLinkInput }>('/api/links', {
+    schema: { body: { type: 'object', additionalProperties: false, required: ['brief', 'amount', 'visibility', 'nsfw', 'agreeToRules'], properties: {
+      brief: { type: 'string', minLength: 1, maxLength: service.policy.maximumBriefLength },
+      amount: { type: 'integer', minimum: service.policy.minimumAmount, maximum: service.policy.maximumAmount },
+      visibility: { enum: ['public', 'anonymous', 'hidden'] }, nsfw: { type: 'boolean' }, agreeToRules: { const: true },
+    } } },
+  }, async (request, reply) => reply.code(201).send(linkResult(invitations.createLink(actor(request), key(request), request.body))));
+  app.post<{ Params: { id: string } }>('/api/links/:id/reissue', async (request) => linkResult(invitations.reissueLink(actor(request), request.params.id, key(request))));
+  app.post<{ Params: { id: string } }>('/api/links/:id/withdraw', async (request) => linkView(invitations.withdrawLink(actor(request), request.params.id, key(request))));
+  app.get('/api/link', async (request) => linkView(invitations.readLink(linkToken(request), optionalAccount(request))));
+  app.post<{ Body: { agreeToRules: boolean } }>('/api/link/accept', {
+    schema: { body: { type: 'object', required: ['agreeToRules'], additionalProperties: false, properties: { agreeToRules: { const: true } } } },
+  }, async (request) => linkView(invitations.acceptLink(identity(request).account, linkToken(request), key(request), request.body.agreeToRules)));
+  app.post('/api/link/decline', async (request) => invitations.declineLink(linkToken(request), key(request)));
   app.get('/api/invitations', async (request) => ({ invitations: invitations.list(actor(request)) }));
   if (options.demoAuth === true || x) {
     app.post<{ Body: InvitationInput }>('/api/invitations', {

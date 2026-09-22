@@ -299,6 +299,26 @@ textarea::placeholder { color: #81857b; }
   .invitation-landing { grid-template-columns: 240px minmax(0, 1fr); gap: 32px; }
   .invitation-intro h1 { font-size: 29px; }
 }
+.local-account-form { margin-top: 26px; }
+.local-account-form .field { margin-bottom: 22px; }
+.local-account-form .primary { width: 100%; }
+.local-account-form .inline-error { margin-bottom: 18px; }
+.account-tabs { display: flex; gap: 25px; border-bottom: 1px solid var(--line); margin-bottom: 25px; }
+.account-tabs button { background: none; color: var(--muted); padding: 0 0 12px; font-size: 13px; }
+.account-tabs button[aria-pressed='true'] { color: var(--ink); border-bottom: 2px solid var(--green); }
+.alternative-login { margin-top: 24px; color: var(--muted); font-size: 12px; }
+.alternative-login .x-login-control { margin-top: 16px; }
+.workspace-heading { padding-top: 44px; }
+.workspace-heading .quiet-button { display: flex; align-items: center; gap: 20px; }
+.request-direction { color: var(--muted); font-size: 10px; margin-left: auto; }
+.link-recipient-account { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 4px; font-size: 12px; }
+.link-registration { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.link-registration > .hint { margin-top: 10px; }
+.link-registration .field label { display: block; margin-bottom: 10px; font-size: 12px; }
+.decline-link { display: block; margin-top: 24px; }
+.invitation-intro .private-link-note { font-size: 11px; margin-top: 28px; color: var(--muted); line-height: 1.9; }
+.request-links-section .cancellation-note { font-size: 12px; line-height: 1.9; }
+.local-account-form .field label { display: block; margin-bottom: 10px; font-size: 12px; }
 @media (max-width: 760px) {
   .shell { width: calc(100% - 36px); }
   .header { flex-wrap: wrap; gap: 0; padding-top: 23px; min-height: 0; }

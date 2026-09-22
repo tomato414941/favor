@@ -14,7 +14,7 @@ await once(probe, 'listening');
 const port = probe.address().port;
 await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()));
 const server = spawn(process.execPath, xAuth ? ['--import', 'tsx', 'tests/browser_x_server.ts'] : ['dist/server/server/main.js', '--demo'], {
-  env: { ...process.env, COMMISSION_AUTH_MODE: 'demo', COMMISSION_DATA_DIR: directory, COMMISSION_PORT: String(port) },
+  env: { ...process.env, COMMISSION_AUTH_MODE: 'local', COMMISSION_DATA_DIR: directory, COMMISSION_PORT: String(port) },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';

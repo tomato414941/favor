@@ -51,10 +51,13 @@ export interface IdentitySession {
   registered: boolean;
 }
 export interface AuthOptions {
-  mode: 'demo' | 'x' | 'disabled';
+  mode: 'local' | 'demo' | 'x' | 'disabled';
   xLogin: boolean;
   invitationLookup: boolean;
+  localLogin?: boolean;
 }
+export interface LocalCredentials { login: string; password: string }
+export interface LocalRegistration extends LocalCredentials { name: string; agreeToRules: boolean }
 export interface InvitationInput {
   recipientHandle: string;
   brief: string;
@@ -86,6 +89,9 @@ export interface InvitationLinkResult {
   /** Returned once. A lost response can be recovered by explicitly reissuing the link. */
   token?: string;
 }
+export type RequestLinkInput = Omit<InvitationInput, 'recipientHandle'>;
+export type RequestLinkView = Omit<InvitationView, 'recipientHandle'>;
+export interface RequestLinkResult { link: RequestLinkView; token?: string }
 export interface CreatorView {
   id: string; name: string; recommendedAmount: number; minimumAmount: number;
   acceptanceDays: number; deliveryDays: number;

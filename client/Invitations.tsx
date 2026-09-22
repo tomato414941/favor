@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { paymentLabels, type AuthOptions, type IdentitySession, type InvitationInput, type InvitationLinkResult, type InvitationView, type RequestInput, type SessionView, type Visibility } from '../src/shared';
+import { paymentLabels, type AuthOptions, type IdentitySession, type InvitationView, type Visibility } from '../src/shared';
 import { api } from './api';
-import { RequestForm, type RequestFormSettings } from './RequestForm';
 import { Arrow } from './ui';
 import { XLoginButton } from './Auth';
 
@@ -52,91 +51,6 @@ function InvitationFacts({ invitation }: { invitation: InvitationView }) {
     </dl>
     {invitation.state === 'cancelled' && <div className="cancellation-note"><h3>この招待の受付は終了しました</h3><p>{reasons[invitation.cancelledReason ?? ''] ?? '招待は終了しています。'}支払確保は解除されました。</p></div>}
   </>;
-}
-
-export function Invitations({ settings, session, options, openRequest }: { settings: RequestFormSettings; session: SessionView; options: AuthOptions; openRequest: (id: string) => void }) {
-  const demo = options.mode === 'demo';
-  const [items, setItems] = useState<InvitationView[]>([]);
-  const [handle, setHandle] = useState('');
-  const [compose, setCompose] = useState(true);
-  const [notice, setNotice] = useState('');
-  const [links, setLinks] = useState<Record<string, string>>({});
-  const actions = useInvitationActions();
-
-  async function refresh() {
-    const data = await api<{ invitations: InvitationView[] }>('/invitations');
-    setItems(data.invitations);
-  }
-  useEffect(() => { void actions.run(refresh); }, []);
-  useEffect(() => { if (actions.error || notice) document.querySelector('.invitations-section .message')?.scrollIntoView({ block: 'nearest' }); }, [actions.error, notice]);
-  const update = (invitation: InvitationView) => setItems((current) => [invitation, ...current.filter((item) => item.id !== invitation.id)]);
-  function saveLink(result: InvitationLinkResult) {
-    update(result.invitation);
-    setLinks((current) => {
-      const next = { ...current };
-      if (result.token) next[result.invitation.id] = `${window.location.origin}/#invite=${result.token}`;
-      else delete next[result.invitation.id];
-      return next;
-    });
-  }
-  async function submit(request: RequestInput) {
-    await actions.run(async () => {
-      const input: InvitationInput = { recipientHandle: handle, brief: request.brief, amount: request.amount,
-        visibility: request.visibility, nsfw: request.nsfw, agreeToRules: request.agreeToRules };
-      const result = await actions.mutate<InvitationLinkResult>('/invitations', input);
-      saveLink(result); setCompose(false);
-      setNotice(result.token ? '招待リンクを作成しました。相手が連絡を受け付けているDMやメールで共有してください。' : '作成済みの招待を確認しました。共有するリンクを再発行してください。');
-    });
-  }
-  async function reissue(invitation: InvitationView) {
-    if (!window.confirm('古いリンクを無効にして、新しいリンクを作成しますか？受諾期限・納品期限は変わりません。')) return;
-    setLinks((current) => { const next = { ...current }; delete next[invitation.id]; return next; });
-    await actions.run(async () => {
-      const result = await actions.mutate<InvitationLinkResult>(`/invitations/${invitation.id}/reissue`);
-      saveLink(result);
-      setNotice(result.token ? 'リンクを再発行しました。古いリンクは使えません。' : '再発行済みのリンクを表示できません。もう一度、再発行してください。');
-    });
-  }
-  async function withdraw(invitation: InvitationView) {
-    if (!window.confirm('この招待を取り消し、支払確保を解除しますか？')) return;
-    await actions.run(async () => {
-      update(await actions.mutate<InvitationView>(`/invitations/${invitation.id}/withdraw`));
-      setLinks((current) => { const next = { ...current }; delete next[invitation.id]; return next; });
-      setNotice('招待を取り消し、支払確保を解除しました。');
-    });
-  }
-  async function copy(link: string) {
-    await actions.run(async () => {
-      if (!navigator.clipboard) throw new Error('リンク欄を選択してコピーしてください。');
-      try { await navigator.clipboard.writeText(link); }
-      catch { throw new Error('コピーできませんでした。リンク欄を選択してコピーしてください。'); }
-      setNotice('招待リンクをコピーしました。');
-    });
-  }
-  return <section className="invitations-section">
-    <div className="section-heading"><div><p className="eyebrow">AN INVITATION TO CREATE</p><h1>まだ出会っていない、依頼を。</h1></div></div>
-    <p className="section-copy">サービスに登録していない作り手にも、招待リンクで依頼を届けられます。</p>
-    {actions.error && <div className="message error" role="alert">{actions.error}</div>}
-    {notice && <div className="message success" role="status">{notice}</div>}
-    {compose ? <div className="compose-layout invitation-compose">
-      <aside className="invitation-guide"><span className="envelope-mark" aria-hidden="true">↗</span><h2>受け取るところから、<br />はじめられる。</h2><ol><li>相手を指定して、リンクを作る。</li><li>相手が受け付けている連絡先で共有する。</li><li>相手がアカウントを確認し、受けるか選ぶ。</li></ol><p>内容を確認するだけなら登録は不要です。受諾するときに登録します。</p><p>リンクの作成だけでは、相手への通知は送られません。</p><p className="hint">{demo ? '現在は体験用のSNSアカウント・決済を使用します。実際のSNSへの接続や請求はありません。' : '宛先のXアカウントで確認した本人だけが、招待の内容を読めます。決済・金額・期限は体験用です。実際の請求は発生しません。'}</p>{!options.invitationLookup && <p className="inline-error" role="status">現在、招待先の確認を利用できません。作成済みの招待は下で確認できます。</p>}</aside>
-      <RequestForm settings={settings} session={session} busy={actions.busy || !options.invitationLookup} submit={submit} invitation={{ handle, changeHandle: setHandle, demo }} />
-    </div> : <button className="quiet-button new-invitation" onClick={() => { setCompose(true); setNotice(''); setHandle(''); }}>別の招待を作る <Arrow /></button>}
-    <div className="invitation-list-heading"><h2>作成した招待</h2><button className="text-button" disabled={actions.busy} onClick={() => void actions.run(refresh)}>最新の状態を確認</button></div>
-    {items.length === 0 ? <p className="empty-invitations">まだ招待はありません。</p> : <div className="invitation-list">
-      {items.map((invitation) => <article className="request-detail invitation-card" key={invitation.id} aria-label={`@${invitation.recipientHandle}への招待`}>
-        <div className="detail-heading"><span className="eyebrow">INVITATION</span><span className={`status status-${invitation.state === 'pending' ? 'awaiting_acceptance' : invitation.state}`}><i />{invitation.state === 'pending' ? '受諾待ち' : invitation.state === 'accepted' ? '受諾済み' : '受付終了'}</span></div>
-        <h2>{invitation.recipientName}</h2><p className="detail-parties">@{invitation.recipientHandle}</p>
-        <InvitationFacts invitation={invitation} />
-        {invitation.state === 'pending' && <div className="invitation-share">
-          {links[invitation.id] ? <><label htmlFor={`link-${invitation.id}`}>招待リンク</label><div className="link-row"><input id={`link-${invitation.id}`} className="text-input" value={links[invitation.id]} readOnly onFocus={(event) => event.target.select()} /><button className="quiet-button" disabled={actions.busy} onClick={() => void copy(links[invitation.id]!)}>コピー</button></div></> : <p className="hint">共有するリンクが必要な場合は再発行してください。古いリンクは無効になります。</p>}
-          <p className="hint">リンクを開いた相手は、宛先のアカウントで確認してから内容を読めます。再発行しても期限は延びません。</p>
-          <div className="action-buttons"><button className="quiet-button" disabled={actions.busy} onClick={() => void reissue(invitation)}>リンクを再発行</button><button className="text-button" disabled={actions.busy} onClick={() => void withdraw(invitation)}>招待を取り消す</button></div>
-        </div>}
-        {invitation.requestId && <button className="primary" onClick={() => openRequest(invitation.requestId!)}>依頼一覧で確認 <Arrow /></button>}
-      </article>)}
-    </div>}
-  </section>;
 }
 
 export function InvitationLanding({ token, options, initialError }: { token: string; options: AuthOptions; initialError: string }) {

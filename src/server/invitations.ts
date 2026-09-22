@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { InvitationInput, InvitationLinkResult, InvitationState, InvitationView, SocialAccount, Visibility } from '../shared.js';
+import type { InvitationInput, InvitationLinkResult, InvitationState, InvitationView, RequestLinkInput, SocialAccount, Visibility } from '../shared.js';
 import { AuthService, hashToken, isToken, newToken } from './auth.js';
 import { commandFingerprint } from './fingerprint.js';
 import { CommissionService, DomainError } from './service.js';
@@ -12,6 +12,7 @@ interface InvitationRow {
   visibility: Visibility; nsfw: number; state: InvitationState; created_at: number;
   expires_at: number; deliver_by: number; token_hash: string; cancelled_reason: string | null;
   request_id: string | null;
+  access_mode: 'account' | 'link';
 }
 const unavailable = (): never => { throw new DomainError('INVITATION_UNAVAILABLE', 'この招待を確認できません。宛先のアカウントとリンクをお確かめください。', 404); };
 const socialActor = (account: SocialAccount) => JSON.stringify([account.provider, account.subject]);
@@ -34,7 +35,7 @@ export class InvitationService {
   private recipient(account: SocialAccount, token: string): InvitationRow {
     if (!isToken(token)) unavailable();
     const row = this.store.db.prepare('SELECT * FROM invitations WHERE token_hash = ?').get(hashToken(token)) as unknown as InvitationRow | undefined;
-    if (!row || row.recipient_provider !== account.provider || row.recipient_subject !== account.subject
+    if (!row || row.access_mode !== 'account' || row.recipient_provider !== account.provider || row.recipient_subject !== account.subject
       || row.cancelled_reason === 'expired' || row.cancelled_reason === 'withdrawn') return unavailable();
     return row;
   }
@@ -73,12 +74,75 @@ export class InvitationService {
   list(actor: string): InvitationView[] {
     this.commissions.session(actor);
     this.expire();
-    const rows = this.store.db.prepare('SELECT * FROM invitations WHERE client_id = ? ORDER BY created_at DESC, rowid DESC').all(actor) as unknown as InvitationRow[];
+    const rows = this.store.db.prepare("SELECT * FROM invitations WHERE client_id = ? AND access_mode = 'account' ORDER BY created_at DESC, rowid DESC").all(actor) as unknown as InvitationRow[];
     return rows.map((row) => this.view(row, true));
   }
   read(account: SocialAccount, token: string): InvitationView {
     this.expire();
     return this.store.transaction(() => this.view(this.recipient(account, token), false));
+  }
+  listLinks(actor: string): InvitationView[] {
+    this.commissions.session(actor);
+    this.expire();
+    const rows = this.store.db.prepare("SELECT * FROM invitations WHERE client_id = ? AND access_mode = 'link' ORDER BY created_at DESC, rowid DESC").all(actor) as unknown as InvitationRow[];
+    return rows.map((row) => this.view(row, true));
+  }
+  private link(token: string, account?: SocialAccount): InvitationRow {
+    const missing = () => new DomainError('LINK_UNAVAILABLE', 'この依頼リンクは利用できません。リンクを送った方にご確認ください。', 404);
+    if (!isToken(token)) throw missing();
+    const row = this.store.db.prepare("SELECT * FROM invitations WHERE token_hash = ? AND access_mode = 'link'").get(hashToken(token)) as unknown as InvitationRow | undefined;
+    if (!row || row.state === 'cancelled') throw missing();
+    if (row.state === 'accepted' && (!account || row.recipient_provider !== account.provider || row.recipient_subject !== account.subject)) throw missing();
+    return row;
+  }
+  readLink(token: string, account?: SocialAccount): InvitationView {
+    this.expire();
+    return this.store.transaction(() => this.view(this.link(token, account), false));
+  }
+  createLink(actor: string, key: string, input: RequestLinkInput): InvitationLinkResult {
+    return this.createFor(actor, key, input);
+  }
+  reissueLink(actor: string, id: string, key: string): InvitationLinkResult {
+    if (this.owner(actor, id).access_mode !== 'link') unavailable();
+    return this.reissue(actor, id, key);
+  }
+  withdrawLink(actor: string, id: string, key: string): InvitationView {
+    if (this.owner(actor, id).access_mode !== 'link') unavailable();
+    return this.withdraw(actor, id, key);
+  }
+  declineLink(token: string, key: string): { ok: true } {
+    this.expire();
+    return this.store.transaction(() => {
+      // A repeated decline succeeds without reopening the private contents.
+      if (!isToken(token)) this.link(token);
+      const row = this.store.db.prepare("SELECT * FROM invitations WHERE token_hash = ? AND access_mode = 'link'").get(hashToken(token)) as unknown as InvitationRow | undefined;
+      if (!row || (row.state !== 'pending' && row.cancelled_reason !== 'declined')) this.link(token);
+      this.command(`link:${hashToken(token)}`, `decline:${row!.id}`, key, {}, () => {
+        this.pending(row!);
+        this.cancelInternal(row!, 'declined', 'link-recipient');
+        return { id: row!.id };
+      });
+      return { ok: true };
+    });
+  }
+  acceptLink(account: SocialAccount, token: string, key: string, agreed: boolean): InvitationView {
+    this.expire();
+    return this.store.transaction(() => {
+      const row = this.link(token, account);
+      if (agreed !== true) throw new DomainError('RULES_REQUIRED', '依頼のルールへの同意が必要です。', 400);
+      this.command(socialActor(account), `accept:${row.id}`, key, { agreed: true }, () => {
+        this.pending(row);
+        const actor = this.auth.registerRecipient(account);
+        const request = this.commissions.receiveInvitation(actor, row.client_id, {
+          brief: row.brief, amount: row.amount, visibility: row.visibility, nsfw: Boolean(row.nsfw), agreeToRules: true,
+        }, { createdAt: row.created_at, expiresAt: row.expires_at, deliverBy: row.deliver_by }, key);
+        this.store.db.prepare("UPDATE invitations SET state = 'accepted', request_id = ?, recipient_provider = ?, recipient_subject = ?, recipient_handle = ?, recipient_name = ? WHERE id = ?").run(
+          request.id, account.provider, account.subject, '', account.name, row.id);
+        this.event(row.id, socialActor(account), 'accept');
+        return { id: row.id };
+      });
+      return this.view(this.row(row.id), false);
+    });
   }
   /** recipient must come from a server-side provider lookup, never from a claimed browser ID. */
   async createWithLookup(actor: string, key: string, input: InvitationInput, lookup: () => Promise<SocialAccount>): Promise<InvitationLinkResult> {
@@ -104,6 +168,9 @@ export class InvitationService {
     });
   }
   create(actor: string, key: string, input: InvitationInput, recipient: SocialAccount): InvitationLinkResult {
+    return this.createFor(actor, key, input, recipient);
+  }
+  private createFor(actor: string, key: string, input: RequestLinkInput, recipient?: SocialAccount): InvitationLinkResult {
     this.commissions.session(actor);
     this.expire();
     const policy = this.commissions.policy;
@@ -113,18 +180,18 @@ export class InvitationService {
       throw new DomainError('INVALID_INPUT', '依頼内容・金額・ルールへの同意を確認してください。', 400);
     }
     const normalized = { brief: input.brief.trim(), amount: input.amount, visibility: input.visibility,
-      nsfw: input.nsfw, agreeToRules: true, provider: recipient.provider, subject: recipient.subject };
+      nsfw: input.nsfw, agreeToRules: true, ...(recipient ? { provider: recipient.provider, subject: recipient.subject } : { access: 'link' }) };
     const result = this.command(`user:${actor}`, 'create', key, normalized, () => {
-      const ownAccount = this.store.db.prepare('SELECT user_id FROM social_accounts WHERE provider = ? AND subject = ?').get(recipient.provider, recipient.subject);
+      const ownAccount = recipient && this.store.db.prepare('SELECT user_id FROM social_accounts WHERE provider = ? AND subject = ?').get(recipient.provider, recipient.subject);
       if (ownAccount?.user_id === actor) throw new DomainError('FORBIDDEN', '自分自身には招待を送れません。', 403);
-      if (this.preference(recipient).blocked) throw new DomainError('INVITATIONS_DISABLED', 'この相手は招待を受け付けていません。', 409);
+      if (recipient && this.preference(recipient).blocked) throw new DomainError('INVITATIONS_DISABLED', 'この相手は招待を受け付けていません。', 409);
       const now = this.clock();
       const count = (sql: string, ...params: Array<string | number>) => Number(this.store.db.prepare(sql).get(...params)!.total);
       if (count("SELECT COUNT(*) AS total FROM invitations WHERE client_id = ? AND state = 'pending'", actor) >= INVITATION_POLICY.maximumPending
         || count('SELECT COUNT(*) AS total FROM invitations WHERE client_id = ? AND created_at > ?', actor, now - DAY) >= INVITATION_POLICY.maximumPerDay) {
-        throw new DomainError('INVITATION_LIMIT', '招待の件数が上限に達しています。時間をおいてお試しください。', 429);
+        throw new DomainError('INVITATION_LIMIT', '依頼の作成件数が上限に達しています。時間をおいてお試しください。', 429);
       }
-      if (count(`SELECT COUNT(*) AS total FROM invitations WHERE client_id = ? AND recipient_provider = ? AND recipient_subject = ?
+      if (recipient && count(`SELECT COUNT(*) AS total FROM invitations WHERE client_id = ? AND recipient_provider = ? AND recipient_subject = ?
         AND (state = 'pending' OR created_at > ?)`, actor, recipient.provider, recipient.subject, now - INVITATION_POLICY.recipientCooldownMs)) {
         throw new DomainError('DUPLICATE_INVITATION', 'この相手にはすでに招待を作成しています。新しい招待は24時間後から作成できます。');
       }
@@ -133,9 +200,9 @@ export class InvitationService {
       const token = newToken();
       const expiresAt = now + Math.min(policy.acceptanceMs, policy.authorizationMs, policy.deliveryMs);
       this.store.db.prepare(`INSERT INTO invitations (id, client_id, recipient_provider, recipient_subject, recipient_handle, recipient_name,
-        brief, amount, visibility, nsfw, state, created_at, expires_at, deliver_by, token_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(id, actor, recipient.provider, recipient.subject,
-          recipient.handle, recipient.name, normalized.brief, input.amount, input.visibility, Number(input.nsfw), now, expiresAt, now + policy.deliveryMs, hashToken(token));
+        brief, amount, visibility, nsfw, state, created_at, expires_at, deliver_by, token_hash, access_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`).run(id, actor, recipient?.provider ?? '', recipient?.subject ?? '',
+          recipient?.handle ?? '', recipient?.name ?? '', normalized.brief, input.amount, input.visibility, Number(input.nsfw), now, expiresAt, now + policy.deliveryMs, hashToken(token), recipient ? 'account' : 'link');
       this.event(id, `user:${actor}`, 'authorize');
       return { id, token };
     });

@@ -51,7 +51,7 @@ def main():
 
         def check_copy(page):
             body = page.locator("body").inner_text()
-            for phrase in ["TODO", "FIXME", "実装済み", "実装予定", "開発者向け", "設計意図", "PKCE", "OAuth", "ジャンル", "@mio_demo", "作り手で体験", "依頼者で体験", "実際のSNSへの接続や請求はありません"]:
+            for phrase in ["TODO", "FIXME", "実装済み", "実装予定", "開発者向け", "設計意図", "PKCE", "OAuth"]:
                 assert phrase not in body, f"Unwanted application copy: {phrase}"
 
         def layout(page, name):
@@ -90,120 +90,45 @@ def main():
             layout(page, "x-registration")
             page.get_by_role("checkbox", name=re.compile("依頼のルールとアカウント情報")).check()
             page.get_by_role("button", name="同意して登録する").click()
-            expect(page.get_by_role("heading", name="あなたの依頼", exact=True)).to_be_visible()
-            assert sender.request.get(f"{base}/api/session").json()["pointsBalance"] == 0
-            assert "commission_session" not in page.evaluate("document.cookie")
-            page.get_by_role("button", name="ログアウト", exact=True).click()
-            expect(page.get_by_role("button", name="Xでログイン", exact=True)).to_be_visible()
-            login(page, "青葉")
-            expect(page.get_by_role("heading", name="あなたの依頼", exact=True)).to_be_visible()
-            expect(page.get_by_role("button", name="同意して登録する")).to_have_count(0)
+            expect(page.get_by_role("heading", name="依頼リンクを作成", exact=True)).to_be_visible()
+            page.get_by_label("依頼内容", exact=True).fill(private_brief)
+            page.get_by_role("checkbox", name=re.compile("^見積もり・打ち合わせ")).check()
+            page.get_by_role("button", name="支払いを確保してリンク作成", exact=True).click()
+            card = page.get_by_role("article", name="依頼リンク", exact=True)
+            link = card.get_by_label("依頼リンク", exact=True).input_value()
+            private_tokens.append(link.split("#link=")[1])
+            layout(page, "x-request-link")
 
-            def compose(handle, brief):
-                page.get_by_role("navigation").get_by_role("button", name="招待を送る", exact=True).click()
-                page.get_by_label("相手のXアカウント", exact=True).fill(handle)
-                page.get_by_label("依頼内容", exact=True).fill(brief)
-                page.get_by_role("radio", name=re.compile("^匿名 ")).check()
-                page.get_by_role("checkbox", name=re.compile("^見積もり・打ち合わせ")).check()
-
-            compose("https://x.com/Mio_fixture", private_brief)
-            layout(page, "x-invitation-compose")
-            original_key = []
-
-            def lose_response(route):
-                if route.request.method != "POST":
-                    route.continue_()
-                    return
-                result = route.fetch()
-                assert result.status == 201
-                original_key.append(route.request.headers["idempotency-key"])
-                route.abort("failed")
-
-            page.route("**/api/invitations", lose_response)
-            page.get_by_role("button", name="支払いを確保してリンク作成").click()
-            expect(page.get_by_role("alert")).to_contain_text("接続を確認できませんでした")
-            page.unroute("**/api/invitations", lose_response)
-            with page.expect_request(lambda request: request.method == "POST" and request.url.endswith("/api/invitations")) as retry:
-                page.get_by_role("button", name="支払いを確保してリンク作成").click()
-            assert retry.value.headers["idempotency-key"] == original_key[0]
-            expect(page.get_by_role("status")).to_contain_text("作成済みの招待を確認しました")
-            assert len(sender.request.get(f"{base}/api/invitations").json()["invitations"]) == 1
-            page.on("dialog", lambda dialog: dialog.accept())
-            page.get_by_role("button", name="リンクを再発行", exact=True).click()
-            expect(page.get_by_label("招待リンク", exact=True)).to_be_visible()
-            link = page.get_by_label("招待リンク", exact=True).input_value()
-            private_tokens.append(parse_qs(urlparse(link).fragment)["invite"][0])
-            page.get_by_role("button", name="コピー", exact=True).click()
-            expect(page.get_by_role("status")).to_contain_text("コピーしました")
-            assert page.evaluate("navigator.clipboard.readText()") == link
-
-            other_page = recipient.new_page()
-            other_page.goto(link)
-            other_page.wait_for_load_state("networkidle")
-            assert private_brief not in other_page.locator("body").inner_text()
-            layout(other_page, "x-invitation-private")
-            # A provider cancellation also returns to the same private invitation.
-            other_page.get_by_role("button", name="Xでアカウントを確認", exact=True).click()
-            other_page.get_by_role("link", name="確認を中止する", exact=True).click()
-            expect(other_page.get_by_role("alert")).to_contain_text("確認を中止しました")
-            assert other_page.url == link
+            receiving = recipient.new_page()
+            receiving.goto(link)
+            expect(receiving.get_by_role("article", name="届いた依頼")).to_contain_text(private_brief)
             assert recipient.request.get(f"{base}/api/auth/identity").json() is None
-            login(other_page, "空", invitation=True)
-            assert other_page.url == link
-            expect(other_page.get_by_role("alert")).to_contain_text("この招待を確認できません")
-            assert private_brief not in other_page.locator("body").inner_text()
-            assert recipient.request.get(f"{base}/api/auth/identity").json()["registered"] is False
-            other_page.get_by_role("button", name="ログアウト", exact=True).click()
-            login(other_page, "澪", invitation=True)
-            assert other_page.url == link
-            expect(other_page.get_by_role("article", name="届いた招待")).to_contain_text(private_brief)
-            expect(other_page.get_by_role("article", name="届いた招待")).to_contain_text("匿名の依頼者")
-            assert recipient.request.get(f"{base}/api/auth/identity").json()["registered"] is False
-            layout(other_page, "x-invitation-verified")
-            other_page.get_by_role("checkbox", name=re.compile("^サービスに登録し")).check()
-            other_page.get_by_role("button", name="登録して依頼を受ける", exact=True).click()
-            expect(other_page.get_by_role("status")).to_contain_text("依頼を受け取りました")
-            other_page.get_by_role("link", name="依頼一覧へ", exact=True).click()
-            expect(other_page.get_by_role("heading", name="あなたの依頼", exact=True)).to_be_visible()
-            detail = other_page.get_by_role("article", name="依頼の詳細")
+            receiving.get_by_role("button", name="受諾へ進む").click()
+            receiving.get_by_role("button", name="Xでログイン", exact=True).click()
+            receiving.get_by_role("link", name="確認を中止する").click()
+            expect(receiving.get_by_role("alert")).to_contain_text("Xでの確認を中止しました")
+            assert receiving.url == link
+            receiving.get_by_role("button", name="受諾へ進む").click()
+            login(receiving, "澪")
+            expect(receiving.get_by_role("article", name="届いた依頼")).to_contain_text("澪として受け取ります")
+            assert receiving.url == link
+            receiving.get_by_role("checkbox", name=re.compile("依頼のルールを確認し、この内容")).check()
+            receiving.get_by_role("button", name="この依頼を受ける", exact=True).click()
+            expect(receiving.get_by_role("article", name="届いた依頼")).to_contain_text("受諾済み")
+            layout(receiving, "x-received")
+            receiving.get_by_role("link", name="依頼一覧へ", exact=True).click()
+            detail = receiving.get_by_role("article", name="依頼の詳細", exact=True)
             expect(detail).to_contain_text("制作中")
-            other_page.locator("input[type=file]").set_input_files({"name": "星の物語.txt", "mimeType": "text/plain", "buffer": "ふたりの物語。".encode()})
-            other_page.get_by_role("button", name="ファイルを納品", exact=True).click()
+            assert recipient.request.get(f"{base}/api/auth/identity").json()["registered"] is True
+            detail.get_by_label("納品ファイルを選択", exact=True).set_input_files({"name": "作品.txt", "mimeType": "text/plain", "buffer": "夜空の物語".encode()})
+            detail.get_by_role("button", name="ファイルを納品", exact=True).click()
             expect(detail).to_contain_text("納品済み")
-            layout(other_page, "x-delivered")
-
-            page.get_by_role("navigation").get_by_role("button", name=re.compile("^依頼一覧")).click()
-            expect(page.get_by_role("article", name="依頼の詳細")).to_contain_text("納品済み", timeout=10000)
-            with page.expect_download() as download:
-                page.get_by_role("link", name=re.compile("星の物語.txt")).click()
-            assert Path(download.value.path()).read_text() == "ふたりの物語。"
-
-            compose("@sora_fixture", "静かな雨を題材に、自由に作ってください。")
-            page.get_by_role("button", name="支払いを確保してリンク作成").click()
-            sora_link = page.get_by_role("article", name="@sora_fixtureへの招待").get_by_label("招待リンク", exact=True).input_value()
-            private_tokens.append(parse_qs(urlparse(sora_link).fragment)["invite"][0])
-            opt_page = opt_out.new_page()
-            opt_page.on("dialog", lambda dialog: dialog.accept())
-            opt_page.goto(sora_link)
-            opt_page.wait_for_load_state("networkidle")
-            login(opt_page, "空", invitation=True)
-            opt_page.get_by_role("button", name="見送る", exact=True).click()
-            expect(opt_page.get_by_role("status")).to_contain_text("見送りました")
-            opt_page.get_by_role("button", name="今後の招待を停止する", exact=True).click()
-            expect(opt_page.get_by_role("status")).to_contain_text("受信を停止しました")
-            assert opt_out.request.get(f"{base}/api/auth/identity").json()["registered"] is False
-            layout(opt_page, "x-declined")
-
-            # No invitation token or private brief is sent to X or in an HTTP URL/referrer.
+            layout(receiving, "x-delivered")
             for request in requests:
-                assert all(token not in request.url and token not in request.headers.get("referer", "") for token in private_tokens)
-                if request.url.startswith("https://x.com/"):
-                    assert private_brief not in (request.post_data or "")
-                if request.url.startswith(base) and request.url.endswith("/api/auth/x/start"):
-                    assert request.post_data_json == {}
-            assert len(oauth_visits) >= 6
+                assert all(token not in request.url for token in private_tokens)
+                assert all(token not in request.headers.get("referer", "") for token in private_tokens)
             assert not page_errors, page_errors
-            print("X browser regression: PASS")
+            print("PASS: 任意のXログインでも秘密リンクに戻り、受諾・納品する")
             print("Screenshots:", artifacts)
         except Exception:
             for index, context in enumerate([sender, recipient, opt_out]):

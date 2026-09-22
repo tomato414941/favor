@@ -17,7 +17,38 @@ interface AccountRow { provider: string; subject: string; handle: string; name: 
 
 /** Authentication boundary. Demo accounts are available only through explicitly enabled demo routes. */
 export class AuthService {
-  constructor(readonly store: Store, readonly clock: () => number = Date.now, readonly options: { allowDemo?: boolean; allowX?: boolean } = {}) {}
+  constructor(readonly store: Store, readonly clock: () => number = Date.now, readonly options: { allowDemo?: boolean; allowX?: boolean; allowLocal?: boolean } = {}) {}
+
+  limit(bucket: string, maximum = 30) {
+    const now = this.clock();
+    this.store.transaction(() => {
+      this.store.db.prepare('DELETE FROM auth_limits WHERE started_at <= ?').run(now - 600_000);
+      const id = hashToken(bucket);
+      const row = this.store.db.prepare('SELECT attempts FROM auth_limits WHERE bucket = ?').get(id);
+      if (row && Number(row.attempts) >= maximum) throw new DomainError('AUTH_RATE_LIMIT', '操作の回数が上限に達しました。時間をおいてお試しください。', 429);
+      this.store.db.prepare('INSERT INTO auth_limits VALUES (?, ?, 1) ON CONFLICT(bucket) DO UPDATE SET attempts = attempts + 1').run(id, now);
+    });
+  }
+
+  createLocal(input: { login: string; name: string; salt: string; passwordHash: string }): string {
+    if (!this.options.allowLocal) throw new DomainError('AUTH_DISABLED', 'アカウントの登録は利用できません。', 403);
+    return this.store.transaction(() => {
+      if (this.store.db.prepare('SELECT 1 FROM local_credentials WHERE login = ?').get(input.login)) throw new DomainError('LOGIN_TAKEN', 'このログインIDは登録済みです。別のIDを使うか、ログインしてください。');
+      const subject = randomUUID();
+      this.store.db.prepare('INSERT INTO local_credentials VALUES (?, ?, ?, ?)').run(input.login, subject, input.salt, input.passwordHash);
+      this.store.db.prepare("INSERT INTO social_accounts (provider, subject, handle, name) VALUES ('local', ?, ?, ?)").run(subject, input.login, input.name);
+      const token = this.localSession(subject);
+      this.registerAccount(token, true);
+      return token;
+    });
+  }
+
+  localSession(subject: string): string {
+    if (!this.options.allowLocal) throw new DomainError('AUTH_DISABLED', 'ログインは利用できません。', 403);
+    const row = this.store.db.prepare("SELECT * FROM social_accounts WHERE provider = 'local' AND subject = ?").get(subject) as unknown as AccountRow | undefined;
+    if (!row) throw new DomainError('UNAUTHORIZED', 'ログインIDとパスワードを確認してください。', 401);
+    return this.issueSession(row);
+  }
 
   private requireDemo() {
     if (this.options.allowDemo !== true) throw new DomainError('DEMO_DISABLED', '体験用の認証は利用できません。', 403);
@@ -71,7 +102,8 @@ export class AuthService {
     if (!row) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     if (row.provider === 'demo' && this.options.allowDemo !== true) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     if (row.provider === 'x' && this.options.allowX !== true) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
-    if (!['demo', 'x'].includes(row.provider)) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
+    if (row.provider === 'local' && this.options.allowLocal !== true) throw new DomainError('UNAUTHORIZED', 'ログインし直してください。', 401);
+    if (!['demo', 'x', 'local'].includes(row.provider)) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     return row;
   }
 

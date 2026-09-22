@@ -60,6 +60,10 @@ export class Store {
         expires_at INTEGER NOT NULL,
         FOREIGN KEY (provider, subject) REFERENCES social_accounts(provider, subject)
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS local_credentials (
+        login TEXT PRIMARY KEY, subject TEXT NOT NULL UNIQUE,
+        salt TEXT NOT NULL, password_hash TEXT NOT NULL
+      ) STRICT;
       CREATE TABLE IF NOT EXISTS invitations (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
         recipient_provider TEXT NOT NULL, recipient_subject TEXT NOT NULL,
@@ -100,6 +104,12 @@ export class Store {
         PRIMARY KEY (provider, subject)
       ) STRICT;
     `);
+    // Existing account-addressed invitations keep their original access rules.
+    this.transaction(() => {
+      if (!this.db.prepare('PRAGMA table_info(invitations)').all().some((column) => column.name === 'access_mode')) {
+        this.db.exec("ALTER TABLE invitations ADD COLUMN access_mode TEXT NOT NULL DEFAULT 'account' CHECK (access_mode IN ('account', 'link'))");
+      }
+    });
     this.transaction(() => {
       if (this.db.prepare('PRAGMA table_info(users)').all().some((column) => column.name === 'creator_enabled')) return;
       this.db.exec("ALTER TABLE users ADD COLUMN creator_enabled INTEGER NOT NULL DEFAULT 0 CHECK (creator_enabled IN (0, 1)); UPDATE users SET creator_enabled = 1 WHERE role = 'creator'");

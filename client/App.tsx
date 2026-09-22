@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { paymentLabels, requestLabels, type AuthOptions, type IdentitySession, type CreatorView, type RequestInput, type RequestView, type Role, type SessionView, type UploadInput, type Visibility } from '../src/shared';
+import { paymentLabels, requestLabels, type AuthOptions, type IdentitySession, type RequestView, type Role, type SessionView, type UploadInput, type Visibility } from '../src/shared';
 import { api, ApiError, encodeFile } from './api';
-import { RequestForm } from './RequestForm';
 import { Arrow } from './ui';
-import { Invitations, InvitationLanding } from './Invitations';
+import { InvitationLanding } from './Invitations';
+import { RequestLinks, RequestLinkLanding } from './RequestLinks';
+import type { RequestFormSettings } from './RequestForm';
 import { AccountEntry, restoreXReturn } from './Auth';
 
 interface Limits { brief: number; files: number; uploadBytes: number; maximumAmount: number }
-interface CreatorSettings { creator: CreatorView; limits: Limits }
-type Page = 'compose' | 'requests' | 'invitations';
+type Page = 'compose' | 'requests';
 const number = new Intl.NumberFormat('ja-JP');
 const yen = (value: number) => `¥${number.format(value)}`;
 const date = (value: number) => new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(value);
@@ -48,181 +48,99 @@ export function App() {
   }, []);
   const route = new URLSearchParams(hash.slice(1));
   if (!options || !ready) return <main className="shell"><div className="loading" role="status">{error ? '接続をお確かめください。' : 'ページを開いています…'}</div>{error && <p className="message error" role="alert">{error} <button onClick={changed}>再読み込み</button></p>}</main>;
+  if (route.has('link')) return <RequestLinkLanding key={hash} token={route.get('link') ?? ''} options={options} initialError={initialLocation.error} />;
   if (route.has('invite')) return <InvitationLanding key={hash} token={route.get('invite') ?? ''} options={options} initialError={initialLocation.error} />;
   if (options.mode !== 'demo' && !identity?.registered) return <AccountEntry key={identity?.account.subject ?? 'login'} options={options} identity={identity} onChange={changed} initialError={initialLocation.error} />;
   return <Workspace key={`${attempt}:${route.get('request') ?? 'workspace'}`} initialRequestId={route.get('request')} options={options} onSessionChange={changed} />;
 }
 
 function Workspace({ initialRequestId, options, onSessionChange }: { initialRequestId: string | null; options: AuthOptions; onSessionChange: () => void }) {
-  const demo = options.mode === 'demo';
-  const [settings, setSettings] = useState<CreatorSettings | null>(null);
+  const [settings, setSettings] = useState<RequestFormSettings | null>(null);
   const [session, setSession] = useState<SessionView | null>(null);
   const [requests, setRequests] = useState<RequestView[]>([]);
-  const [page, setPage] = useState<Page>('compose');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState<Page>(initialRequestId ? 'requests' : 'compose');
+  const [selectedId, setSelectedId] = useState<string | null>(initialRequestId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [bootAttempt, setBootAttempt] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   const keys = useRef(new Map<string, { payload: string; key: string }>());
-  const actionLock = useRef(false);
-  const refreshTicket = useRef(0);
-
+  const lock = useRef(false);
+  const ticket = useRef(0);
   const refresh = useCallback(async () => {
-    const ticket = ++refreshTicket.current;
+    const current = ++ticket.current;
     const [nextSession, data] = await Promise.all([api<SessionView>('/session'), api<{ requests: RequestView[] }>('/requests')]);
-    if (ticket !== refreshTicket.current) return;
-    setSession(nextSession);
-    setRequests(data.requests);
+    if (current !== ticket.current) return;
+    setSession(nextSession); setRequests(data.requests);
     setSelectedId((id) => data.requests.some((request) => request.id === id) ? id : data.requests[0]?.id ?? null);
   }, []);
-
   useEffect(() => {
     let active = true;
     const boot = async () => {
       setError('');
-      const [creatorSettings, existing] = await Promise.all([api<CreatorSettings>('/creator'), api<SessionView | null>(demo ? '/demo/session' : '/session')]);
-      const nextSession = existing ?? (demo ? await api<SessionView>('/demo/session', { role: 'client' }) : null);
-      if (!nextSession) { onSessionChange(); return; }
-      const data = await api<{ requests: RequestView[] }>('/requests');
+      const [nextSettings, existing] = await Promise.all([api<RequestFormSettings>('/request-settings'), api<SessionView | null>(options.mode === 'demo' ? '/demo/session' : '/session')]);
+      if (!existing && options.mode === 'demo') await api('/demo/session', { role: 'client' });
       if (!active) return;
-      setSettings(creatorSettings);
-      setSession(nextSession);
-      setRequests(data.requests);
-      setSelectedId(data.requests.find((request) => request.id === initialRequestId)?.id ?? data.requests[0]?.id ?? null);
-      setPage(!demo || initialRequestId || nextSession.role === 'creator' ? 'requests' : 'compose');
+      setSettings(nextSettings);
+      await refresh();
     };
-    void boot().catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'ページを読み込めませんでした。'); });
-    return () => { active = false; };
-  }, [bootAttempt, initialRequestId, demo, onSessionChange]);
-
+    void boot().catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'ページを開けませんでした。'); });
+    return () => { active = false; ticket.current++; };
+  }, [attempt, options.mode, refresh]);
   useEffect(() => {
     if (!session) return;
     const poll = () => {
-      if (document.hidden || actionLock.current) return;
+      if (document.hidden || lock.current) return;
       void refresh().catch((cause: unknown) => {
-        if (!demo && cause instanceof ApiError && cause.status === 401) onSessionChange();
+        if (cause instanceof ApiError && cause.status === 401) onSessionChange();
         else setError('最新の状態を確認できません。接続を確認して、再読み込みしてください。');
       });
     };
     const timer = window.setInterval(poll, 5000);
     document.addEventListener('visibilitychange', poll);
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', poll); };
-  }, [Boolean(session), refresh, demo, onSessionChange]);
-
-  useEffect(() => { if (error || notice) document.querySelector('.message')?.scrollIntoView({ block: 'nearest' }); }, [error, notice]);
-
+  }, [Boolean(session), refresh, onSessionChange]);
   async function run(action: () => Promise<void>) {
-    if (actionLock.current) return;
-    actionLock.current = true;
-    refreshTicket.current++;
-    setBusy(true); setError(''); setNotice('');
+    if (lock.current) return;
+    lock.current = true; ticket.current++; setBusy(true); setError(''); setNotice('');
     try { await action(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : '操作を完了できませんでした。'); }
-    finally { actionLock.current = false; setBusy(false); }
-  }
-  async function mutation(path: string, body: unknown): Promise<RequestView> {
-    const payload = JSON.stringify(body);
-    let attempt = keys.current.get(path);
-    if (!attempt || attempt.payload !== payload) {
-      attempt = { payload, key: crypto.randomUUID() };
-      keys.current.set(path, attempt);
-    }
-    const result = await api<RequestView>(path, body, attempt.key);
-    keys.current.delete(path);
-    return result;
-  }
-  async function changeRole(role: Role) {
-    await run(async () => {
-      await api<SessionView>('/demo/session', { role });
-      await refresh();
-      setPage(role === 'creator' ? 'requests' : 'compose');
-    });
-  }
-  const navigate = (next: Page) => { setPage(next); setError(''); setNotice(''); };
-  async function submit(input: RequestInput) {
-    await run(async () => {
-      const created = await mutation('/requests', input);
-      setSelectedId(created.id);
-      setRequests((current) => [created, ...current.filter((request) => request.id !== created.id)]);
-      setPage('requests');
-      setNotice('依頼を送りました。作り手からの承認をお待ちください。');
-      await refresh();
-    });
+    finally { lock.current = false; setBusy(false); }
   }
   async function act(request: RequestView, action: 'accept' | 'cancel', files?: UploadInput[]) {
     await run(async () => {
-      const updated = await mutation(`/requests/${request.id}/${files ? 'deliver' : action}`, files ? { files } : {});
+      const path = `/requests/${request.id}/${files ? 'deliver' : action}`;
+      const body = files ? { files } : {};
+      const payload = JSON.stringify(body);
+      let operation = keys.current.get(path);
+      if (!operation || operation.payload !== payload) { operation = { payload, key: crypto.randomUUID() }; keys.current.set(path, operation); }
+      const updated = await api<RequestView>(path, body, operation.key);
+      keys.current.delete(path);
       setRequests((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setNotice(files ? 'ファイルを納品しました。' : action === 'accept' ? '依頼を承認しました。納品期限までに作品をお届けください。' : '依頼をキャンセルしました。');
+      setNotice(files ? 'ファイルを納品しました。' : action === 'accept' ? '依頼を承認しました。' : '依頼をキャンセルしました。');
       await refresh();
     });
   }
+  const navigate = (next: Page) => { setPage(next); setError(''); setNotice(''); };
   const selected = requests.find((request) => request.id === selectedId);
-
   return <>
-    <div className="demo-banner"><span className="demo-mark">DEMO</span>体験用 · 実際の請求は発生しません</div>
-    <header className="header shell">
-      <button className="wordmark" onClick={() => navigate(!demo || session?.role === 'creator' ? 'requests' : 'compose')} aria-label="commission ホーム">commission<span>↗</span></button>
-      {session && <>
-        <nav aria-label="メインナビゲーション">
-          {demo && session.role === 'client' && <button aria-current={page === 'compose' ? 'page' : undefined} onClick={() => navigate('compose')}>依頼を送る</button>}
-          <button aria-current={page === 'requests' ? 'page' : undefined} onClick={() => navigate('requests')}>依頼一覧 <span className="count">{requests.length}</span></button>
-          <button aria-current={page === 'invitations' ? 'page' : undefined} onClick={() => navigate('invitations')}>招待を送る</button>
-        </nav>
-        {demo ? <div className="role-switch" aria-label="体験する役割">
-          <button aria-pressed={session.role === 'client'} disabled={busy} onClick={() => void changeRole('client')}>依頼者で体験</button>
-          <button aria-pressed={session.role === 'creator'} disabled={busy} onClick={() => void changeRole('creator')}>作り手で体験</button>
-        </div> : <div className="account-menu"><span>{session.name}</span><button className="text-button" disabled={busy} onClick={() => void run(async () => { await api('/auth/logout', {}); onSessionChange(); })}>ログアウト</button></div>}
-      </>}
+    <div className="demo-banner"><span className="demo-mark">DEMO</span>決済は体験用 · 実際の請求は発生しません</div>
+    <header className="header shell"><button className="wordmark" onClick={() => navigate('compose')} aria-label="commission ホーム">commission<span>↗</span></button>
+      {session && <><nav aria-label="メインナビゲーション"><button aria-current={page === 'compose' ? 'page' : undefined} onClick={() => navigate('compose')}>依頼を作る</button><button aria-current={page === 'requests' ? 'page' : undefined} onClick={() => navigate('requests')}>依頼一覧</button></nav><div className="account-menu"><span>{session.name}</span><button className="text-button" disabled={busy} onClick={() => void run(async () => { await api('/auth/logout', {}); onSessionChange(); })}>ログアウト</button></div></>}
     </header>
     <main className="shell">
-      {error && <div className="message error" role="alert">{error} <button onClick={() => session ? void run(refresh) : setBootAttempt((value) => value + 1)} disabled={busy}>再読み込み</button></div>}
+      {error && <div className="message error" role="alert">{error} <button disabled={busy} onClick={() => session ? void run(refresh) : setAttempt((value) => value + 1)}>再読み込み</button></div>}
       {notice && <div className="message success" role="status">{notice}</div>}
-      {!settings || !session ? <div className="loading" role="status">{error ? '接続をお確かめください。' : 'ページを開いています…'}</div> : page === 'invitations' ? <Invitations key={session.name} settings={settings} session={session} options={options} openRequest={(id) => { void run(async () => { await refresh(); setSelectedId(id); setPage('requests'); }); }} /> : demo && page === 'compose' && session.role === 'client' ? <>
-        <section className="intro">
-          <p className="eyebrow"><span /> A LITTLE TRUST, A NEW CREATION</p>
-          <h1>好きな創作を、<br />その人の自由で。</h1>
-          <p className="intro-copy">届けたい言葉と、応援の気持ちを。<br />あとは、作り手の感性におまかせ。</p>
-          <span className="intro-note" aria-hidden="true">Leave a little<br /><i>room for wonder.</i></span>
-        </section>
-        <div className="compose-layout">
-          <CreatorCard creator={settings.creator} />
-          <RequestForm settings={settings} session={session} busy={busy} submit={submit} />
-        </div>
-      </> : <section className="requests-section">
-        <div className="section-heading"><div><p className="eyebrow">YOUR COMMISSIONS</p><h1>{demo && session.role === 'creator' ? '届いた依頼' : 'あなたの依頼'}</h1></div><span className="total">{requests.length} 件</span></div>
-        {requests.length ? <div className="requests-layout">
-          <div className="request-list" aria-label="依頼を選択">
-            {requests.map((request) => <button key={request.id} className={`request-item ${request.id === selectedId ? 'selected' : ''}`} aria-pressed={request.id === selectedId} onClick={() => { setSelectedId(request.id); setNotice(''); setError(''); }}>
-              <span className="request-item-top"><Status request={request} /></span>
-              <span className="request-excerpt">{request.brief}</span>
-              <span className="request-item-bottom"><span>{request.viewerRole === 'creator' ? request.clientName : request.creatorName}</span><span>{yen(request.amount ?? 0)}</span></span>
-            </button>)}
-          </div>
-          {selected && <RequestDetail key={`${selected.viewerRole}:${selected.id}`} request={selected} role={selected.viewerRole ?? session.role} limits={settings.limits} busy={busy} act={act} />}
-        </div> : <div className="empty-state"><span className="empty-symbol" aria-hidden="true">c.</span><h2>まだ依頼はありません</h2><p>{demo && session.role === 'creator' ? '依頼が届くと、ここで内容を確認できます。' : '気持ちを言葉にして、はじめての依頼を。'}</p>{(!demo || session.role === 'client') && <button className="primary" onClick={() => navigate(demo ? 'compose' : 'invitations')}>{demo ? '依頼を送る' : '招待を送る'} <Arrow /></button>}</div>}
-      </section>}
-    </main>
-    <footer className="footer shell"><span className="footer-brand">commission</span><span>つくる人の自由を、楽しみに。</span><span className="footer-note">{demo ? '体験用プロフィール・決済' : '決済は体験用です'}</span></footer>
+      {!settings || !session ? <div className="loading" role="status">{error ? '接続をお確かめください。' : 'ページを開いています…'}</div> : <>
+        {page === 'requests' && <div className="section-heading workspace-heading"><div><p className="eyebrow">YOUR COMMISSIONS</p><h1>あなたの依頼</h1></div><button className="quiet-button" onClick={() => navigate('compose')}>依頼を作る<Arrow /></button></div>}
+        <RequestLinks settings={settings} composing={page === 'compose'} onCreated={() => navigate('requests')} />
+        {page === 'requests' && <section className="requests-section"><div className="section-heading"><h2>制作・納品</h2><span className="total">{requests.length} 件</span></div>
+          {requests.length ? <div className="requests-layout"><div className="request-list" aria-label="依頼を選択">{requests.map((request) => <button key={request.id} className={`request-item ${request.id === selectedId ? 'selected' : ''}`} aria-pressed={request.id === selectedId} onClick={() => { setSelectedId(request.id); setError(''); setNotice(''); }}><span className="request-item-top"><Status request={request} /><span className="request-direction">{request.viewerRole === 'creator' ? '受けた依頼' : '送った依頼'}</span></span><span className="request-excerpt">{request.brief}</span><span className="request-item-bottom"><span>{request.viewerRole === 'creator' ? request.clientName : request.creatorName}</span><span>{yen(request.amount ?? 0)}</span></span></button>)}</div>{selected && <RequestDetail key={`${selected.viewerRole}:${selected.id}`} request={selected} role={selected.viewerRole ?? session.role} limits={settings.limits} busy={busy} act={act} />}</div> : <div className="empty-state"><span className="empty-symbol" aria-hidden="true">c.</span><h2>これから、創作がはじまります</h2><p>受諾した依頼は、ここで制作・納品の状況を確認できます。</p></div>}
+        </section>}
+      </>}
+    </main><footer className="footer shell"><span className="footer-brand">commission</span><span>つくる人の自由を、楽しみに。</span><span className="footer-note">決済は体験用です</span></footer>
   </>;
 }
-
-function CreatorCard({ creator }: { creator: CreatorView }) {
-  return <aside className="creator-card">
-    <div className="creator-art" aria-hidden="true"><span className="art-sun" /><span className="art-hill hill-back" /><span className="art-hill hill-front" /><span className="art-line" /><span className="art-caption">somewhere, quietly.</span></div>
-    <div className="creator-content">
-      <div className="accepting"><span />リクエスト受付中</div>
-      <h2>{creator.name}</h2>
-      <p className="creator-bio">物語の気配や、静かな風景が好きです。<br />いただいた言葉から、自由に作ります。</p>
-      <div className="creator-price"><span>推奨金額</span><strong>{yen(creator.recommendedAmount)}</strong></div>
-      <dl className="creator-terms"><div><dt>最低金額</dt><dd>{yen(creator.minimumAmount)}</dd></div><div><dt>承認期限</dt><dd>送信から{creator.acceptanceDays}日</dd></div><div><dt>納品期限</dt><dd>送信から{creator.deliveryDays}日</dd></div></dl>
-      <p className="sample-profile">体験用のプロフィール・金額・期限です。</p>
-    </div>
-    <div className="side-note"><span className="note-number">01 — 03</span><p>言葉を送る。<br />自由な創作を待つ。<br />届いた作品を楽しむ。</p></div>
-  </aside>;
-}
-
 
 function RequestDetail({ request, role, limits, busy, act }: { request: RequestView; role: Role; limits: Limits; busy: boolean; act: (request: RequestView, action: 'accept' | 'cancel', files?: UploadInput[]) => Promise<void> }) {
   const canDeliver = role === 'creator' && ['accepted', 'delivered'].includes(request.state) && Date.now() < request.deliverBy;
