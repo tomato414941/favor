@@ -77,7 +77,8 @@ def main():
             layout(page, 'registration')
             register(page, sender_login, '青葉')
             expect(page.get_by_role('heading', name='依頼リンクを作成')).to_be_visible()
-            session_cookie = next(cookie for cookie in sender.cookies() if cookie['name'] == 'commission_session')
+            cookie_name = '__Host-commission_session' if base.startswith('https://') else 'commission_session'
+            session_cookie = next(cookie for cookie in sender.cookies() if cookie['name'] == cookie_name)
             assert session_cookie['httpOnly'] and session_cookie['sameSite'] == 'Strict'
             assert session_cookie['secure'] == base.startswith('https://')
             layout(page, 'compose')

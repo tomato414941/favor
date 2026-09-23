@@ -15,12 +15,12 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
     const registered = await app.inject({ method: 'POST', url: '/api/auth/local/register', headers,
       payload: { ...credentials, name: '受け取る人', agreeToRules: true } });
     assert.equal(registered.statusCode, 200);
-    const session = registered.cookies.find((entry) => entry.name === 'commission_session')!;
+    const session = registered.cookies.find((entry) => entry.name === '__Host-commission_session')!;
     assert.equal(session.secure, true);
     assert.equal(session.httpOnly, true);
     assert.equal(session.sameSite, 'Strict');
     assert.equal(session.path, '/');
-    const cookie = `commission_session=${session.value}`;
+    const cookie = `${session.name}=${session.value}`;
     const identity = await app.inject({ url: '/api/auth/identity', headers: { ...headers, cookie } });
     assert.equal(identity.json().account.handle, credentials.login);
     assert.equal(identity.headers['cache-control'], 'no-store');
@@ -36,7 +36,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
     }
     const logout = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { ...headers, cookie } });
     assert.equal(logout.statusCode, 200);
-    assert.equal(logout.cookies.find((entry) => entry.name === 'commission_session')!.secure, true);
+    assert.equal(logout.cookies.find((entry) => entry.name === session.name)!.secure, true);
     assert.equal((await app.inject({ url: '/api/auth/identity', headers: { ...headers, cookie } })).json(), null);
     const login = await app.inject({ method: 'POST', url: '/api/auth/local/login', headers, payload: credentials });
     assert.equal(login.statusCode, 200);

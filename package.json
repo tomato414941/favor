@@ -12,7 +12,7 @@
     "start": "node --import ./scripts/env.mjs dist/server/server/main.js --demo",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:browser": "npm run build -- --logLevel warn && node scripts/browser.mjs && node scripts/browser.mjs --x",
+    "test:browser": "npm run build -- --logLevel warn && python3 tests/browser_cookie_isolation.py && node scripts/browser.mjs && node scripts/browser.mjs --x",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {

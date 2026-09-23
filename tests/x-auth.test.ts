@@ -208,7 +208,7 @@ test('HTTP X: cookies, fixed callback, consent, private invitations, retries and
     const start = await app.inject({ method: 'POST', url: '/api/auth/x/start', headers: { ...headers, cookie: oldCookie }, payload: {} });
     assert.equal(start.statusCode, 200);
     const url = new URL(start.json().url);
-    const cookie = `commission_oauth=${cookieValue(start, 'commission_oauth')}`;
+    const cookie = `__Host-commission_oauth=${cookieValue(start, '__Host-commission_oauth')}`;
     assert.match(String(start.headers['set-cookie']), /HttpOnly/); assert.match(String(start.headers['set-cookie']), /SameSite=Lax/); assert.match(String(start.headers['set-cookie']), /Secure/);
     const callback = `/api/auth/x/callback?${new URLSearchParams({ state: url.searchParams.get('state')!, code: 'fixture-code', returnTo: 'https://evil.example' })}`;
     assert.equal((await app.inject({ method: 'HEAD', url: callback, headers: { ...headers, cookie } })).statusCode, 404);
@@ -219,9 +219,9 @@ test('HTTP X: cookies, fixed callback, consent, private invitations, retries and
     assert.equal(String(response.headers.location).includes('evil.example'), false);
     assert.equal(response.headers['cache-control'], 'no-store'); assert.equal(response.headers['referrer-policy'], 'no-referrer');
     assert.match(String(response.headers['set-cookie']), /SameSite=Strict/);
-    const session = cookieValue(response, 'commission_session')!;
+    const session = cookieValue(response, '__Host-commission_session')!;
     assert.match(session, /^[A-Za-z0-9_-]{43}$/);
-    return { cookie: `commission_session=${session}`, raw: session };
+    return { cookie: `__Host-commission_session=${session}`, raw: session };
   };
   try {
     assert.deepEqual((await app.inject({ url: '/api/auth/options', headers })).json(), { mode: 'x', xLogin: true, invitationLookup: true });

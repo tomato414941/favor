@@ -36,8 +36,12 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   const auth = new AuthService(service.store, service.clock, { allowDemo: options.demoAuth === true, allowX: Boolean(options.xProvider), allowLocal: options.localAuth === true });
   const local = options.localAuth ? new LocalAuth(auth) : null;
   const x = options.xProvider ? new XAuth(auth, options.xProvider) : null;
-  const sessionCookie = { httpOnly: true, sameSite: 'strict' as const, path: '/', maxAge: 86400, secure: origin?.protocol === 'https:' };
-  const flowCookie = { httpOnly: true, sameSite: 'lax' as const, path: '/api/auth', maxAge: 600, secure: sessionCookie.secure };
+  const secureCookies = origin?.protocol === 'https:';
+  // The browser rejects parent-domain cookies with a __Host- prefix.
+  const sessionCookieName = secureCookies ? '__Host-commission_session' : 'commission_session';
+  const flowCookieName = secureCookies ? '__Host-commission_oauth' : 'commission_oauth';
+  const sessionCookie = { httpOnly: true, sameSite: 'strict' as const, path: '/', maxAge: 86400, secure: secureCookies };
+  const flowCookie = { httpOnly: true, sameSite: 'lax' as const, path: secureCookies ? '/' : '/api/auth', maxAge: 600, secure: secureCookies };
   const invitations = new InvitationService(service, auth);
   await app.register(cookie);
   app.addHook('onRequest', async (request, reply) => {
@@ -64,17 +68,17 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     app.log.error({ code: error.code }, 'Request failed');
     return reply.code(500).send({ message: '処理を完了できませんでした。時間をおいてお試しください。' });
   });
-  const actor = (request: FastifyRequest): string => auth.actor(request.cookies.commission_session);
-  const identity = (request: FastifyRequest) => auth.identity(request.cookies.commission_session);
+  const actor = (request: FastifyRequest): string => auth.actor(request.cookies[sessionCookieName]);
+  const identity = (request: FastifyRequest) => auth.identity(request.cookies[sessionCookieName]);
   const optionalAccount = (request: FastifyRequest) => {
     try { return identity(request).account; }
     catch (error) { if (error instanceof DomainError && error.statusCode === 401) return undefined; throw error; }
   };
   const invitationToken = (request: FastifyRequest): string => typeof request.headers['x-commission-invitation'] === 'string' ? request.headers['x-commission-invitation'] : '';
   const login = (request: FastifyRequest, reply: FastifyReply, persona: DemoPersona) => {
-    auth.logout(request.cookies.commission_session);
+    auth.logout(request.cookies[sessionCookieName]);
     const token = auth.demoLogin(persona);
-    reply.setCookie('commission_session', token, sessionCookie);
+    reply.setCookie(sessionCookieName, token, sessionCookie);
     return token;
   };
   const key = (request: FastifyRequest): string => typeof request.headers['idempotency-key'] === 'string' ? request.headers['idempotency-key'] : '';
@@ -88,35 +92,35 @@ export async function buildApp(service: CommissionService, options: AppOptions =
       } } },
     }, async (request, reply) => {
       auth.limit(`local:${request.ip}`);
-      const token = await local.register(request.body, request.cookies.commission_session);
-      reply.setCookie('commission_session', token, sessionCookie);
+      const token = await local.register(request.body, request.cookies[sessionCookieName]);
+      reply.setCookie(sessionCookieName, token, sessionCookie);
       return auth.identity(token);
     });
     app.post<{ Body: LocalCredentials }>('/api/auth/local/login', {
       schema: { body: { type: 'object', additionalProperties: false, required: ['login', 'password'], properties: credentialProperties } },
     }, async (request, reply) => {
       auth.limit(`local:${request.ip}`);
-      const token = await local.login(request.body, request.cookies.commission_session);
-      reply.setCookie('commission_session', token, sessionCookie);
+      const token = await local.login(request.body, request.cookies[sessionCookieName]);
+      reply.setCookie(sessionCookieName, token, sessionCookie);
       return auth.identity(token);
     });
   }
   if (x) {
     app.post('/api/auth/x/start', { schema: { body: { type: 'object', additionalProperties: false, maxProperties: 0 } } }, async (request, reply) => {
-      const flow = x.start(request.ip, request.cookies.commission_oauth, request.cookies.commission_session);
-      reply.setCookie('commission_oauth', flow.browser, flowCookie);
+      const flow = x.start(request.ip, request.cookies[flowCookieName], request.cookies[sessionCookieName]);
+      reply.setCookie(flowCookieName, flow.browser, flowCookie);
       return { url: flow.url };
     });
     app.get<{ Querystring: Record<string, unknown> }>('/api/auth/x/callback', { exposeHeadRoute: false }, async (request, reply) => {
       let outcome = 'success';
       try {
-        const token = await x.finish(request.cookies.commission_oauth, request.query);
-        reply.setCookie('commission_session', token, sessionCookie);
+        const token = await x.finish(request.cookies[flowCookieName], request.query);
+        reply.setCookie(sessionCookieName, token, sessionCookie);
       } catch (error) {
         outcome = error instanceof DomainError && error.code === 'OAUTH_CANCELLED' ? 'cancelled'
           : error instanceof DomainError && error.code === 'OAUTH_EXPIRED' ? 'expired' : 'failed';
       }
-      if (outcome !== 'expired') reply.clearCookie('commission_oauth', flowCookie);
+      if (outcome !== 'expired') reply.clearCookie(flowCookieName, flowCookie);
       const flow = isToken(request.query.state) ? `&flow=${request.query.state}` : '';
       return reply.redirect(`${publicOrigin}/#auth=${outcome}${flow}`, 303);
     });
@@ -147,15 +151,15 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     catch (error) { if (error instanceof DomainError && error.statusCode === 401) return null; throw error; }
   });
   app.post('/api/auth/logout', async (request, reply) => {
-    auth.logout(request.cookies.commission_session);
-    x?.cancel(request.cookies.commission_oauth);
-    reply.clearCookie('commission_session', sessionCookie);
-    reply.clearCookie('commission_oauth', flowCookie);
+    auth.logout(request.cookies[sessionCookieName]);
+    x?.cancel(request.cookies[flowCookieName]);
+    reply.clearCookie(sessionCookieName, sessionCookie);
+    reply.clearCookie(flowCookieName, flowCookie);
     return { ok: true };
   });
   app.post<{ Body: { agreeToRules: boolean } }>('/api/auth/register', {
     schema: { body: { type: 'object', required: ['agreeToRules'], additionalProperties: false, properties: { agreeToRules: { const: true } } } },
-  }, async (request) => service.session(auth.registerAccount(request.cookies.commission_session, request.body.agreeToRules)));
+  }, async (request) => service.session(auth.registerAccount(request.cookies[sessionCookieName], request.body.agreeToRules)));
   const linkToken = (request: FastifyRequest): string => typeof request.headers['x-commission-link'] === 'string' ? request.headers['x-commission-link'] : '';
   const linkView = ({ recipientHandle: _handle, ...view }: InvitationView) => view;
   const linkResult = ({ invitation, ...rest }: InvitationLinkResult) => ({ link: linkView(invitation), ...rest });
