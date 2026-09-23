@@ -558,70 +558,15 @@ textarea:focus {
   color: var(--muted);
   font-size: 13px;
 }
+
 .account-layout {
-  max-width: 1000px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
-  gap: 76px;
+  max-width: 440px;
   padding-top: 48px;
-  align-items: start;
-}
-.account-intro {
-  padding-top: 2px;
-  max-width: 370px;
-}
-.account-intro h1 {
-  font-size: 32px;
-  line-height: 1.55;
-  letter-spacing: -0.025em;
-}
-.account-intro > p {
-  margin-top: 19px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.95;
-}
-.entry-steps {
-  list-style: none;
-  padding: 0;
-  margin: 32px 0 27px;
-  counter-reset: entry;
-}
-.entry-steps li {
-  position: relative;
-  padding-left: 29px;
-  margin-top: 22px;
-  counter-increment: entry;
-}
-.entry-steps li::before {
-  content: counter(entry) '.';
-  position: absolute;
-  left: 0;
-  top: 1px;
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.entry-steps strong {
-  font-size: 13px;
-}
-.entry-steps p {
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 3px;
-  line-height: 1.9;
-}
-.account-intro .entry-note {
-  border-top: 1px solid var(--line);
-  padding-top: 18px;
-  font-size: 12px;
 }
 .account-panel {
-  padding-left: 38px;
-  border-left: 1px solid var(--line);
   min-width: 0;
 }
-.account-panel > h2 {
+.account-panel > h1 {
   margin-bottom: 7px;
   font-size: 20px;
 }
@@ -680,23 +625,19 @@ textarea:focus {
 .local-account-form .primary {
   width: 100%;
 }
-.registration-rules {
-  padding-left: 18px;
-  margin: 20px 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.85;
-}
-.registration-rules li + li {
-  margin-top: 7px;
-}
-.account-fields .registration-rules {
-  margin: 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
 .registration-agreement {
   margin-block: 22px;
+}
+.registration-terms {
+  color: var(--muted);
+  font-size: 12px;
+}
+.registration-terms ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+.account-panel > .registration-terms {
+  margin-top: 18px;
 }
 .registration-identity {
   display: grid;
@@ -732,11 +673,6 @@ textarea:focus {
 }
 summary {
   cursor: pointer;
-}
-.account-privacy {
-  border-top: 1px solid var(--line);
-  padding-top: 17px;
-  margin-top: 24px;
 }
 .workspace-heading {
   padding-top: 34px;
@@ -1261,16 +1197,7 @@ summary {
   .header {
     gap: 28px;
   }
-  .account-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
-    gap: 40px;
-  }
-  .account-panel {
-    padding-left: 28px;
-  }
-  .account-intro h1 {
-    font-size: 29px;
-  }
+
   .compose-layout,
   .request-link-landing {
     grid-template-columns: 210px minmax(0, 1fr);
@@ -1337,34 +1264,8 @@ summary {
   #root > main {
     padding-bottom: 38px;
   }
-  .account-layout {
-    display: block;
-    max-width: 520px;
-    padding-top: 28px;
-  }
-  .account-intro {
-    max-width: none;
-  }
-  .account-intro h1 {
-    font-size: 25px;
-  }
-  .account-intro h1 br {
-    display: none;
-  }
-  .account-intro > p {
-    margin-top: 12px;
-  }
-  .entry-steps,
-  .account-intro .entry-note {
-    display: none;
-  }
-  .account-panel {
-    border-left: 0;
-    border-top: 1px solid var(--line);
-    padding: 26px 0 0;
-    margin-top: 27px;
-  }
-  .account-panel > h2 {
+
+  .account-panel > h1 {
     font-size: 19px;
   }
   .intro {

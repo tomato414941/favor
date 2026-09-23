@@ -268,7 +268,6 @@ export function Workspace({
       </main>
       <footer className="footer shell">
         <span className="footer-brand">commission</span>
-        <span>創作の依頼と納品</span>
       </footer>
     </>
   );

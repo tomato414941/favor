@@ -108,6 +108,19 @@ export function XLoginButton({
   );
 }
 
+function RegistrationTerms() {
+  return (
+    <details className="registration-terms">
+      <summary>依頼の条件</summary>
+      <ul>
+        <li>見積もり・打ち合わせなし</li>
+        <li>修正依頼なし</li>
+        <li>仕上がりは依頼先に一任</li>
+      </ul>
+    </details>
+  );
+}
+
 export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<void> }) {
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const register = mode === 'register';
@@ -184,7 +197,6 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
             maxLength={254}
             required
           />
-          {register && <p className="hint">ログインに使います。相手には表示されません。</p>}
         </div>
         <div className="field">
           <label htmlFor="account-password">パスワード</label>
@@ -199,14 +211,11 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
             maxLength={1024}
             required
           />
-          {register && <p className="hint">12文字以上で設定してください。</p>}
+          {register && <p className="hint">12文字以上</p>}
         </div>
         {register && (
           <>
-            <ul className="registration-rules">
-              <li>見積もり・打ち合わせ・リテイク要求は行いません。</li>
-              <li>作り手は受けたい依頼を選び、表現や仕上がりを自由に決めます。</li>
-            </ul>
+            <RegistrationTerms />
             <label className="checkbox-line registration-agreement">
               <input
                 type="checkbox"
@@ -214,7 +223,7 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
                 onChange={(event) => setAgreed(event.target.checked)}
                 required
               />
-              <span>依頼のルールを確認し、サービスへの登録に同意します。</span>
+              <span>依頼の条件に同意する</span>
             </label>
           </>
         )}
@@ -268,38 +277,10 @@ export function AccountEntry({
         <a className="wordmark" href="/">
           commission
         </a>
-        <span>創作の依頼と納品</span>
       </header>
       <main className="shell account-layout">
-        <section className="account-intro">
-          <h1>
-            依頼を作って、
-            <br />
-            リンクで渡す。
-          </h1>
-          <p>
-            内容と金額を決めて、依頼したい相手にリンクを共有。受諾から納品まで、ここで管理できます。
-          </p>
-          <ol className="entry-steps">
-            <li>
-              <strong>依頼内容をまとめる</strong>
-              <p>お願いしたいことと、支払う金額を決めます。</p>
-            </li>
-            <li>
-              <strong>相手にリンクを渡す</strong>
-              <p>受け取った相手は、登録前に内容を確認できます。</p>
-            </li>
-            <li>
-              <strong>受諾後、作品を受け取る</strong>
-              <p>作り手が依頼を受けると制作が始まります。</p>
-            </li>
-          </ol>
-          <p className="entry-note">
-            見積もり・打ち合わせ・リテイクのない依頼です。表現や仕上がりは作り手に任せます。
-          </p>
-        </section>
         <section className="account-panel" aria-label={identity ? 'サービスへの登録' : 'ログイン'}>
-          <h2>{identity ? '登録内容の確認' : options.localLogin ? 'アカウント' : 'ログイン'}</h2>
+          <h1>{identity ? '登録内容の確認' : options.localLogin ? 'アカウント' : 'ログイン'}</h1>
           {error && (
             <p className="inline-error" role="alert">
               {error}
@@ -314,17 +295,8 @@ export function AccountEntry({
                   別のアカウントを使う
                 </button>
               </div>
-              <p className="account-copy">
-                ひとつのアカウントで、依頼を送ることも、受け取ることもできます。
-              </p>
-              <ul className="registration-rules">
-                <li>見積もり・打ち合わせ・リテイク要求は行いません。</li>
-                <li>作り手は受けたい依頼を選び、表現や仕上がりを自由に決めます。</li>
-                <li>受諾・納品の期限は、依頼リンクの作成日から数えます。</li>
-              </ul>
-              <p className="hint">
-                XのユーザーID・表示名・ユーザー名を、ログインとアカウントの識別に使用します。表示名は依頼者・作り手の名前として使われます。
-              </p>
+              <p className="hint">依頼相手にはXの表示名が表示されます</p>
+              <RegistrationTerms />
               <label className="checkbox-line registration-agreement">
                 <input
                   type="checkbox"
@@ -332,9 +304,7 @@ export function AccountEntry({
                   disabled={busy}
                   onChange={(event) => setAgreed(event.target.checked)}
                 />
-                <span>
-                  依頼のルールとアカウント情報の利用を確認し、サービスへの登録に同意します。
-                </span>
+                <span>依頼の条件とアカウント情報の利用に同意する</span>
               </label>
               <button className="primary" disabled={!agreed || busy} onClick={() => void run(true)}>
                 {busy ? '登録しています…' : '同意して登録する'}
@@ -343,7 +313,6 @@ export function AccountEntry({
             </>
           ) : options.localLogin ? (
             <>
-              <p className="account-copy">同じアカウントで依頼の作成・受諾・納品ができます。</p>
               <LocalAccountForm onChange={onChange} />
               {options.xLogin && (
                 <details className="alternative-login">
@@ -354,9 +323,6 @@ export function AccountEntry({
             </>
           ) : (
             <>
-              <p className="account-copy">
-                Xでログインして、創作の依頼をはじめましょう。はじめての方は、アカウントの確認後に登録へ進めます。
-              </p>
               {options.xLogin ? (
                 <XLoginButton />
               ) : (
@@ -364,18 +330,12 @@ export function AccountEntry({
                   現在、ログインを利用できません。時間をおいてお試しください。
                 </p>
               )}
-              <p className="hint account-privacy">
-                あなたの代わりに投稿・DMを送ることはありません。
-                <br />
-                Xのパスワードを、このサービスに入力する必要はありません。
-              </p>
             </>
           )}
         </section>
       </main>
       <footer className="footer shell">
         <span className="footer-brand">commission</span>
-        <span>創作の依頼と納品</span>
       </footer>
     </>
   );

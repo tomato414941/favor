@@ -88,7 +88,7 @@ def main():
             assert sender.request.get(f"{base}/api/auth/identity").json()["registered"] is False
             assert sender.request.get(f"{base}/api/session").status == 401
             layout(page, "x-registration")
-            page.get_by_role("checkbox", name=re.compile("依頼のルールとアカウント情報")).check()
+            page.get_by_role("checkbox", name=re.compile("アカウント情報の利用に同意")).check()
             page.get_by_role("button", name="同意して登録する").click()
             expect(page.get_by_role("heading", name="依頼リンクを作成", exact=True)).to_be_visible()
             page.get_by_label("依頼内容", exact=True).fill(private_brief)
