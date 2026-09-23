@@ -59,7 +59,6 @@ export interface AuthOptions {
 }
 export interface LocalCredentials { email: string; password: string }
 export interface LocalRegistration extends LocalCredentials { agreeToRules: boolean }
-export interface LocalMigration extends LocalCredentials { login: string }
 export interface InvitationInput {
   recipientHandle: string;
   brief: string;

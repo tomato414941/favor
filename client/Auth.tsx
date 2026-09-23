@@ -51,11 +51,9 @@ export function XLoginButton({ label = 'Xでログイン', disabled = false }: {
 }
 
 export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<void> }) {
-  const [mode, setMode] = useState<'register' | 'login' | 'migrate'>('register');
+  const [mode, setMode] = useState<'register' | 'login'>('register');
   const register = mode === 'register';
-  const migrating = mode === 'migrate';
   const [email, setEmail] = useState('');
-  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -66,22 +64,20 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
     if (locked.current) return;
     locked.current = true; setBusy(true); setError('');
     try {
-      await api(`/auth/local/${mode}`, register ? { email, password, agreeToRules: agreed } : migrating ? { email, password, login } : { email, password });
+      await api(`/auth/local/${mode}`, register ? { email, password, agreeToRules: agreed } : { email, password });
       setPassword('');
       await onChange();
     } catch (cause) { setError(cause instanceof Error ? cause.message : '操作を完了できませんでした。'); }
     finally { locked.current = false; setBusy(false); }
   }
-  return <form className="local-account-form" onSubmit={(event) => void submit(event)} aria-label={register ? 'アカウント登録' : migrating ? 'メールアドレスへの切り替え' : 'ログイン'}>
+  return <form className="local-account-form" onSubmit={(event) => void submit(event)} aria-label={register ? 'アカウント登録' : 'ログイン'}>
     <div className="account-tabs"><button type="button" aria-pressed={register} disabled={busy} onClick={() => { setMode('register'); setPassword(''); setError(''); }}>新規登録</button><button type="button" aria-pressed={!register} disabled={busy} onClick={() => { setMode('login'); setPassword(''); setError(''); }}>ログイン</button></div>
     <fieldset disabled={busy} className="account-fields">
-      {migrating && <><p className="account-copy">以前のログインIDとパスワードで、既存の依頼を引き継げます。</p><div className="field"><label htmlFor="account-login">以前のログインID</label><input id="account-login" className="text-input" value={login} onChange={(event) => setLogin(event.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} required /></div></>}
-      <div className="field"><label htmlFor="account-email">メールアドレス</label><input id="account-email" className="text-input" type="email" inputMode="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete={migrating ? 'email' : 'username'} autoCapitalize="none" spellCheck={false} maxLength={254} required />{(register || migrating) && <p className="hint">ログインに使います。相手には表示されません。</p>}</div>
+      <div className="field"><label htmlFor="account-email">メールアドレス</label><input id="account-email" className="text-input" type="email" inputMode="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={254} required />{register && <p className="hint">ログインに使います。相手には表示されません。</p>}</div>
       <div className="field"><label htmlFor="account-password">パスワード</label><input id="account-password" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={register ? 'new-password' : 'current-password'} minLength={12} maxLength={1024} required />{register && <p className="hint">12文字以上で設定してください。</p>}</div>
       {register && <><ul className="registration-rules"><li>見積もり・打ち合わせ・リテイク要求は行いません。</li><li>作り手は受けたい依頼を選び、表現や仕上がりを自由に決めます。</li></ul><label className="checkbox-line registration-agreement"><input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} required /><span>依頼のルールを確認し、サービスへの登録に同意します。</span></label></>}
       {error && <p className="inline-error" role="alert">{error}</p>}
-      <button className="primary" disabled={busy || (register && !agreed)}>{busy ? '処理しています…' : register ? '同意して登録する' : migrating ? 'メールアドレスに切り替える' : 'ログインする'}</button>
-      {mode === 'login' && <button type="button" className="text-button" onClick={() => { setMode('migrate'); setPassword(''); setError(''); }}>以前のログインIDをお持ちの方</button>}
+      <button className="primary" disabled={busy || (register && !agreed)}>{busy ? '処理しています…' : register ? '同意して登録する' : 'ログインする'}</button>
     </fieldset>
   </form>;
 }

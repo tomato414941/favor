@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { InvitationInput, InvitationLinkResult, InvitationView, LocalCredentials, LocalMigration, LocalRegistration, RequestInput, RequestLinkInput, UploadInput } from '../shared.js';
+import type { InvitationInput, InvitationLinkResult, InvitationView, LocalCredentials, LocalRegistration, RequestInput, RequestLinkInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
 import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { InvitationService } from './invitations.js';
@@ -101,16 +101,6 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     }, async (request, reply) => {
       auth.limit(`local:${request.ip}`);
       const token = await local.login(request.body, request.cookies[sessionCookieName]);
-      reply.setCookie(sessionCookieName, token, sessionCookie);
-      return auth.identity(token);
-    });
-    app.post<{ Body: LocalMigration }>('/api/auth/local/migrate', {
-      schema: { body: { type: 'object', additionalProperties: false, required: ['email', 'password', 'login'], properties: {
-        ...credentialProperties, login: { type: 'string', minLength: 3, maxLength: 32 },
-      } } },
-    }, async (request, reply) => {
-      auth.limit(`local:${request.ip}`);
-      const token = await local.migrate(request.body, request.cookies[sessionCookieName]);
       reply.setCookie(sessionCookieName, token, sessionCookie);
       return auth.identity(token);
     });

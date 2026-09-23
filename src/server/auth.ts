@@ -47,7 +47,8 @@ export class AuthService {
 
   localSession(subject: string): string {
     if (!this.options.allowLocal) throw new DomainError('AUTH_DISABLED', 'ログインは利用できません。', 403);
-    const row = this.store.db.prepare("SELECT * FROM social_accounts WHERE provider = 'local' AND subject = ?").get(subject) as unknown as AccountRow | undefined;
+    const row = this.store.db.prepare(`SELECT a.* FROM social_accounts a JOIN local_credentials c ON c.subject = a.subject
+      WHERE a.provider = 'local' AND a.subject = ? AND instr(c.login, '@') > 1`).get(subject) as unknown as AccountRow | undefined;
     if (!row) throw new DomainError('UNAUTHORIZED', 'メールアドレスとパスワードを確認してください。', 401);
     return this.issueSession(row);
   }
@@ -97,22 +98,23 @@ export class AuthService {
     return token;
   }
 
-  private account(token: string | undefined): AccountRow {
+  private account(token: string | undefined): AccountRow & { email: string | null } {
     if (!isToken(token)) throw new DomainError('UNAUTHORIZED', 'アカウントの確認が必要です。', 401);
-    const row = this.store.db.prepare(`SELECT a.* FROM sessions s JOIN social_accounts a
-      ON a.provider = s.provider AND a.subject = s.subject WHERE s.token_hash = ? AND s.expires_at > ?`).get(hashToken(token), this.clock()) as unknown as AccountRow | undefined;
+    const row = this.store.db.prepare(`SELECT a.*, c.login AS email FROM sessions s JOIN social_accounts a
+      ON a.provider = s.provider AND a.subject = s.subject
+      LEFT JOIN local_credentials c ON a.provider = 'local' AND c.subject = a.subject
+      WHERE s.token_hash = ? AND s.expires_at > ?`).get(hashToken(token), this.clock()) as unknown as (AccountRow & { email: string | null }) | undefined;
     if (!row) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     if (row.provider === 'demo' && this.options.allowDemo !== true) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     if (row.provider === 'x' && this.options.allowX !== true) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
-    if (row.provider === 'local' && this.options.allowLocal !== true) throw new DomainError('UNAUTHORIZED', 'ログインし直してください。', 401);
+    if (row.provider === 'local' && (this.options.allowLocal !== true || !row.email?.includes('@'))) throw new DomainError('UNAUTHORIZED', 'ログインし直してください。', 401);
     if (!['demo', 'x', 'local'].includes(row.provider)) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     return row;
   }
 
   identity(token: string | undefined): IdentitySession {
-    const { user_id: userId, ...account } = this.account(token);
-    const login = account.provider === 'local' ? this.store.db.prepare('SELECT login FROM local_credentials WHERE subject = ?').get(account.subject)?.login : null;
-    return { account, registered: userId !== null, ...(typeof login === 'string' && login.includes('@') ? { email: login } : {}) };
+    const { user_id: userId, email, ...account } = this.account(token);
+    return { account, registered: userId !== null, ...(account.provider === 'local' ? { email: email! } : {}) };
   }
   actor(token: string | undefined): string {
     const account = this.account(token);

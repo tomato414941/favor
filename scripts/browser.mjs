@@ -38,7 +38,7 @@ try {
     await delay(200);
   }
   if (!ready) throw new Error(`Demo server did not start: ${logs}`);
-  browser = spawn('python3', [xAuth ? 'tests/browser_x.py' : 'tests/browser.py', url], { stdio: 'inherit', env: { ...process.env, PYTHONUNBUFFERED: '1', COMMISSION_TEST_DATA_DIR: directory } });
+  browser = spawn('python3', [xAuth ? 'tests/browser_x.py' : 'tests/browser.py', url], { stdio: 'inherit', env: { ...process.env, PYTHONUNBUFFERED: '1' } });
   const [code] = await once(browser, 'exit');
   process.exitCode = code ?? 1;
 } catch (error) {

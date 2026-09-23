@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 import re
 import secrets
-import sqlite3
 import sys
 import tempfile
 
@@ -178,24 +177,6 @@ def main():
             layout(page, 'download')
 
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
-            # Restore an ID-based credential in this invocation's isolated database.
-            test_data = Path(os.environ['COMMISSION_TEST_DATA_DIR'])
-            assert test_data.name.startswith('commission-e2e-data-') and base.startswith('http://127.0.0.1:')
-            legacy_login = f'previous_{run_id}'
-            with sqlite3.connect(test_data / 'commission.sqlite') as database:
-                updated = database.execute('UPDATE local_credentials SET login = ? WHERE login = ?', (legacy_login, receiver_email))
-                assert updated.rowcount == 1
-            receiving.get_by_role('button', name='ログイン', exact=True).click()
-            receiving.get_by_role('button', name='以前のログインIDをお持ちの方', exact=True).click()
-            migration = receiving.get_by_role('form', name='メールアドレスへの切り替え', exact=True)
-            migration.get_by_label('以前のログインID', exact=True).fill(legacy_login)
-            migration.get_by_label('メールアドレス', exact=True).fill(receiver_email.upper())
-            migration.get_by_label('パスワード', exact=True).fill(password)
-            layout(receiving, 'email-migration')
-            migration.get_by_role('button', name='メールアドレスに切り替える', exact=True).click()
-            receiving.get_by_role('navigation').get_by_role('button', name='依頼一覧', exact=True).click()
-            expect(receiving.get_by_role('article', name='依頼の詳細')).to_contain_text('第2版')
-            receiving.get_by_role('button', name='ログアウト', exact=True).click()
             receiving.get_by_role('button', name='ログイン', exact=True).click()
             login_form = receiving.get_by_role('form', name='ログイン', exact=True)
             login_form.get_by_label('メールアドレス', exact=True).fill(receiver_email.upper())
@@ -239,7 +220,7 @@ def main():
                 assert all(token not in request.headers.get('referer', '') for token in tokens)
                 assert request.url.startswith(base), request.url
             assert not runtime_errors, runtime_errors
-            print('PASS: メール登録・ログイン・既存アカウント切り替え、秘密リンク作成・再試行・共有、未登録閲覧、受諾の再試行、専用化、納品・再納品・ダウンロード、辞退・再発行・取消、PC・スマホ表示を確認する')
+            print('PASS: メール登録・ログイン、秘密リンク作成・再試行・共有、未登録閲覧、受諾の再試行、専用化、納品・再納品・ダウンロード、辞退・再発行・取消、PC・スマホ表示を確認する')
             print(f'Screenshots: {artifacts}')
         except Exception:
             for i, item in enumerate([page, receiving, visiting]):
