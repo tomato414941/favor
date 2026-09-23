@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import re
+import secrets
 import sys
 import tempfile
 
@@ -15,7 +16,10 @@ def main():
     observed = []
     runtime_errors = []
     tokens = []
-    password = 'private-link-test-password'
+    run_id = secrets.token_hex(6)
+    sender_login = f'aoba_{run_id}'
+    receiver_login = f'mio_{run_id}'
+    password = secrets.token_urlsafe(24)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         contexts = []
@@ -71,8 +75,11 @@ def main():
             page.goto(base)
             expect(page.get_by_role('heading', name='創作の依頼を、ここから。')).to_be_visible()
             layout(page, 'registration')
-            register(page, 'aoba', '青葉')
+            register(page, sender_login, '青葉')
             expect(page.get_by_role('heading', name='依頼リンクを作成')).to_be_visible()
+            session_cookie = next(cookie for cookie in sender.cookies() if cookie['name'] == 'commission_session')
+            assert session_cookie['httpOnly'] and session_cookie['sameSite'] == 'Strict'
+            assert session_cookie['secure'] == base.startswith('https://')
             layout(page, 'compose')
             brief = '海辺の喫茶店を舞台にした、ふたりだけの星の物語をお願いします。'
             compose(page, brief)
@@ -120,7 +127,7 @@ def main():
             receiving.get_by_role('button', name='受諾へ進む', exact=True).click()
             expect(receiving.get_by_role('form', name='アカウント登録')).to_be_visible()
             layout(receiving, 'recipient-registration')
-            register(receiving, 'mio', '澪')
+            register(receiving, receiver_login, '澪')
             expect(detail).to_contain_text('澪として受け取ります')
             detail.get_by_role('checkbox', name=re.compile('依頼のルールを確認し、この内容')).check()
 
@@ -172,7 +179,7 @@ def main():
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
             receiving.get_by_role('button', name='ログイン', exact=True).click()
             login_form = receiving.get_by_role('form', name='ログイン', exact=True)
-            login_form.get_by_label('ログインID', exact=True).fill('mio')
+            login_form.get_by_label('ログインID', exact=True).fill(receiver_login)
             login_form.get_by_label('パスワード', exact=True).fill(password)
             login_form.get_by_role('button', name='ログインする').click()
             receiving.get_by_role('navigation').get_by_role('button', name='依頼一覧', exact=True).click()

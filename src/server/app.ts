@@ -9,22 +9,39 @@ import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { InvitationService } from './invitations.js';
 import { normalizeXHandle, XAuth, XProvider } from './x-auth.js';
 import { LocalAuth } from './local-auth.js';
+import { parsePublicOrigin } from './public-origin.js';
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
-export async function buildApp(service: CommissionService, options: { staticRoot?: string; logger?: boolean; demoAuth?: boolean; localAuth?: boolean; xProvider?: XProvider } = {}) {
+interface AppOptions {
+  staticRoot?: string;
+  logger?: boolean;
+  demoAuth?: boolean;
+  localAuth?: boolean;
+  xProvider?: XProvider;
+  publicOrigin?: string;
+  trustLoopbackProxy?: boolean;
+}
+
+export async function buildApp(service: CommissionService, options: AppOptions = {}) {
   if (options.demoAuth && options.xProvider) throw new Error('Demo and X authentication cannot be enabled together.');
+  const configuredOrigin = options.publicOrigin ?? options.xProvider?.publicOrigin;
+  const origin = configuredOrigin === undefined ? undefined : parsePublicOrigin(configuredOrigin);
+  const publicOrigin = origin?.origin;
+  if (options.xProvider && publicOrigin !== options.xProvider.publicOrigin) throw new Error('The application and X callback origins must match.');
+  if (options.demoAuth && origin && !['localhost', '127.0.0.1'].includes(origin.hostname)) throw new Error('Demo authentication is allowed only on loopback.');
+  if (options.trustLoopbackProxy && !origin) throw new Error('COMMISSION_PUBLIC_ORIGIN is required when trusting the loopback proxy.');
   // OAuth query strings and invitation headers must not enter request logs.
-  const app = Fastify({ logger: options.logger ?? false, logController: new LogController({ disableRequestLogging: true }), bodyLimit: 12 * 1024 * 1024 });
+  const app = Fastify({ logger: options.logger ?? false, logController: new LogController({ disableRequestLogging: true }),
+    bodyLimit: 12 * 1024 * 1024, trustProxy: options.trustLoopbackProxy ? ['127.0.0.1', '::1'] : false });
   const auth = new AuthService(service.store, service.clock, { allowDemo: options.demoAuth === true, allowX: Boolean(options.xProvider), allowLocal: options.localAuth === true });
   const local = options.localAuth ? new LocalAuth(auth) : null;
   const x = options.xProvider ? new XAuth(auth, options.xProvider) : null;
-  const publicOrigin = options.xProvider?.publicOrigin;
-  const sessionCookie = { httpOnly: true, sameSite: 'strict' as const, path: '/', maxAge: 86400, secure: options.xProvider?.secureCookies ?? false };
+  const sessionCookie = { httpOnly: true, sameSite: 'strict' as const, path: '/', maxAge: 86400, secure: origin?.protocol === 'https:' };
   const flowCookie = { httpOnly: true, sameSite: 'lax' as const, path: '/api/auth', maxAge: 600, secure: sessionCookie.secure };
   const invitations = new InvitationService(service, auth);
   await app.register(cookie);
   app.addHook('onRequest', async (request, reply) => {
-    if ((publicOrigin && new URL(publicOrigin).host !== request.headers.host) || (!publicOrigin && !['localhost', '127.0.0.1'].includes(request.hostname))) return reply.code(403).send({ message: 'アクセス先のURLを確認してください。' });
+    if ((origin && origin.host !== request.headers.host) || (!origin && !['localhost', '127.0.0.1'].includes(request.hostname))) return reply.code(403).send({ message: 'アクセス先のURLを確認してください。' });
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
       if (request.headers['x-commission-action'] !== '1') return reply.code(403).send({ message: '操作を確認できませんでした。' });
       const origin = request.headers.origin;

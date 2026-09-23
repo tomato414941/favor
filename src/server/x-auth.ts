@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { SocialAccount } from '../shared.js';
 import { AuthService, hashToken, isToken, newToken } from './auth.js';
 import { DomainError } from './service.js';
+import { parsePublicOrigin } from './public-origin.js';
 
 export interface XConfig {
   clientId: string;
@@ -37,12 +38,7 @@ export class XProvider {
   readonly callbackUrl: string;
   readonly secureCookies: boolean;
   constructor(private readonly config: XConfig, private readonly request: XFetch = fetch) {
-    let origin: URL;
-    try { origin = new URL(config.publicOrigin); } catch { throw new Error('COMMISSION_PUBLIC_ORIGIN must be a valid origin.'); }
-    if (origin.origin !== config.publicOrigin || origin.username || origin.password
-      || !(origin.protocol === 'https:' || (origin.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(origin.hostname)))) {
-      throw new Error('COMMISSION_PUBLIC_ORIGIN must be an HTTPS origin (HTTP is allowed only on loopback).');
-    }
+    const origin = parsePublicOrigin(config.publicOrigin);
     if (!config.clientId.trim() || !config.clientSecret.trim()) throw new Error('X_CLIENT_ID and X_CLIENT_SECRET are required in X authentication mode.');
     this.publicOrigin = origin.origin;
     this.callbackUrl = `${origin.origin}/api/auth/x/callback`;

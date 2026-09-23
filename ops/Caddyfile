@@ -1,0 +1,27 @@
+{
+	admin off
+	default_bind {$COMMISSION_BIND_ADDRESS}
+	servers {
+		protocols h1 h2
+	}
+	log {
+		format filter {
+			wrap json
+			fields {
+				request delete
+				resp_headers delete
+			}
+		}
+	}
+}
+
+{$COMMISSION_HOST} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=86400"
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
+	# Access logging stays off; global error logs omit request headers and URLs.
+	reverse_proxy 127.0.0.1:{$COMMISSION_PORT}
+}
