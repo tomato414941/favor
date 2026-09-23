@@ -143,11 +143,7 @@ test('作成の再試行をまとめ、リンクを再発行して古いリン�
     assert.equal(s.links.read(updated.token!).id, created.link.id);
     assert.throws(
       () =>
-        s.links.reissue(
-          s.auth.registerAccount(s.auth.demoLogin('other'), true),
-          created.link.id,
-          key(),
-        ),
+        s.links.reissue(s.auth.registerAccount(s.auth.demoLogin('other')), created.link.id, key()),
       errorCode('LINK_UNAVAILABLE'),
     );
     for (let i = 0; i < 4; i++) s.links.reissue('demo-client', created.link.id, key());
@@ -261,7 +257,6 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
       payload: {
         email: `${name}@example.test`,
         password: 'long-password-for-test',
-        agreeToRules: true,
       },
     });
     assert.equal(response.statusCode, 200);
@@ -358,7 +353,6 @@ test('アカウントを再起動後も使い、ログイン・ログアウト�
     const input = {
       email: ' Aoba+Art@Example.TEST ',
       password: 'correct-horse-battery',
-      agreeToRules: true,
     };
     const token = await local.register(input);
     const user = auth.actor(token);
@@ -391,19 +385,14 @@ test('アカウントを再起動後も使い、ログイン・ログアウト�
   }
 });
 
-test('登録の入力・同意とログイン試行の上限を検証する', async () => {
+test('登録の入力とログイン試行の上限を検証する', async () => {
   const s = setup();
   const local = new LocalAuth(s.auth);
   const account = {
     email: 'recipient@example.test',
     password: 'long-password-for-test',
-    agreeToRules: true,
   };
   try {
-    await assert.rejects(
-      local.register({ ...account, agreeToRules: false }),
-      errorCode('RULES_REQUIRED'),
-    );
     await assert.rejects(
       local.register({ ...account, password: 'short' }),
       errorCode('INVALID_PASSWORD'),

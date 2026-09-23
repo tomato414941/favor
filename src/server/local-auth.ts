@@ -1,5 +1,5 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
-import type { LocalCredentials, LocalRegistration } from '../shared.js';
+import type { LocalCredentials } from '../shared.js';
 import { AuthService } from './auth.js';
 import { DomainError } from './service.js';
 
@@ -29,7 +29,7 @@ const loginError = 'メールアドレスとパスワードを確認してくだ
 export class LocalAuth {
   constructor(readonly auth: AuthService) {}
 
-  async register(input: LocalRegistration, previousSession?: string): Promise<string> {
+  async register(input: LocalCredentials, previousSession?: string): Promise<string> {
     const email = normalize(input.email);
     if (!emailValid(email)) throw invalidEmail();
     if (!passwordValid(input.password))
@@ -38,8 +38,6 @@ export class LocalAuth {
         'パスワードは12文字以上、1,024バイト以内で入力してください。',
         400,
       );
-    if (input.agreeToRules !== true)
-      throw new DomainError('RULES_REQUIRED', '登録と依頼のルールへの同意が必要です。', 400);
     const salt = randomBytes(32).toString('hex');
     const passwordHash = (await derive(input.password, salt)).toString('hex');
     return this.auth.store.transaction(() => {

@@ -189,13 +189,12 @@ test('XログインではPKCEとブラウザーにひも付く状態を検証し
   }
 });
 
-test('Xでの登録に同意を求め、ユーザー名変更後も同じアカウントとして認証する', async () => {
+test('Xで登録したアカウントをユーザー名変更後も認証する', async () => {
   const s = setup();
   try {
     const session = await s.finish(s.start());
-    assert.throws(() => s.auth.registerAccount(session, false), codeIs('RULES_REQUIRED'));
-    const user = s.auth.registerAccount(session, true);
-    assert.equal(s.auth.registerAccount(session, true), user);
+    const user = s.auth.registerAccount(session);
+    assert.equal(s.auth.registerAccount(session), user);
     assert.equal(s.auth.identity(session).registered, true);
     assert.equal(
       s.store.db.prepare('SELECT COUNT(*) AS total FROM registration_consents').get()!.total,
@@ -429,7 +428,7 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
           method: 'POST',
           url: '/api/auth/register',
           headers,
-          payload: { agreeToRules: true },
+          payload: {},
         })
       ).statusCode,
       401,
@@ -447,23 +446,12 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
       ).statusCode,
       401,
     );
-    assert.equal(
-      (
-        await app.inject({
-          method: 'POST',
-          url: '/api/auth/register',
-          headers: senderHeaders,
-          payload: { agreeToRules: false },
-        })
-      ).statusCode,
-      400,
-    );
     const register = () =>
       app.inject({
         method: 'POST',
         url: '/api/auth/register',
         headers: senderHeaders,
-        payload: { agreeToRules: true },
+        payload: {},
       });
     assert.equal((await register()).statusCode, 200);
     assert.equal((await register()).statusCode, 200);

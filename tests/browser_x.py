@@ -84,12 +84,11 @@ def main():
 
             login(page, "青葉")
             expect(page.get_by_role("heading", name="登録内容の確認", exact=True)).to_be_visible()
-            expect(page.get_by_role("button", name="同意して登録する")).to_be_disabled()
+            expect(page.get_by_role("button", name="登録する", exact=True)).to_be_enabled()
             assert sender.request.get(f"{base}/api/auth/identity").json()["registered"] is False
             assert sender.request.get(f"{base}/api/session").status == 401
             layout(page, "x-registration")
-            page.get_by_role("checkbox", name=re.compile("アカウント情報の利用に同意")).check()
-            page.get_by_role("button", name="同意して登録する").click()
+            page.get_by_role("button", name="登録する", exact=True).click()
             expect(page.get_by_role("heading", name="依頼リンクを作成", exact=True)).to_be_visible()
             page.get_by_label("依頼内容", exact=True).fill(private_brief)
             page.get_by_role("checkbox", name=re.compile("^見積もり・打ち合わせ")).check()
@@ -101,7 +100,7 @@ def main():
 
             receiving = recipient.new_page()
             receiving.goto(link)
-            expect(receiving.get_by_role("article", name="届いた依頼")).to_contain_text(private_brief)
+            expect(receiving.get_by_role("article", name="依頼", exact=True)).to_contain_text(private_brief)
             assert recipient.request.get(f"{base}/api/auth/identity").json() is None
             receiving.get_by_role("button", name="受諾へ進む").click()
             receiving.get_by_role("button", name="Xでログイン", exact=True).click()
@@ -110,11 +109,11 @@ def main():
             assert receiving.url == link
             receiving.get_by_role("button", name="受諾へ進む").click()
             login(receiving, "澪")
-            expect(receiving.get_by_role("article", name="届いた依頼")).to_contain_text("澪として受け取ります")
+            expect(receiving.get_by_role("article", name="依頼", exact=True)).to_contain_text("澪として受け取ります")
             assert receiving.url == link
-            receiving.get_by_role("checkbox", name=re.compile("依頼のルールを確認し、この内容")).check()
+            receiving.get_by_role("checkbox", name="内容・金額・期限を確認しました", exact=True).check()
             receiving.get_by_role("button", name="この依頼を受ける", exact=True).click()
-            expect(receiving.get_by_role("article", name="届いた依頼")).to_contain_text("受諾済み")
+            expect(receiving.get_by_role("article", name="依頼", exact=True)).to_contain_text("受諾済み")
             layout(receiving, "x-received")
             receiving.get_by_role("link", name="依頼一覧へ", exact=True).click()
             detail = receiving.get_by_role("article", name="依頼の詳細", exact=True)

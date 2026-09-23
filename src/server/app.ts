@@ -3,12 +3,7 @@ import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type {
-  LocalCredentials,
-  LocalRegistration,
-  RequestLinkInput,
-  UploadInput,
-} from '../shared.js';
+import type { LocalCredentials, RequestLinkInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
 import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { RequestLinkService } from './request-links.js';
@@ -145,25 +140,18 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     ...(local ? { localLogin: true } : {}),
   }));
   if (local) {
-    const credentialProperties = {
-      email: { type: 'string', minLength: 1, maxLength: 254 },
-      password: { type: 'string', minLength: 12, maxLength: 1024 },
-    };
-    app.post<{ Body: LocalRegistration }>(
-      '/api/auth/local/register',
-      {
-        schema: {
-          body: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['email', 'password', 'agreeToRules'],
-            properties: {
-              ...credentialProperties,
-              agreeToRules: { const: true },
-            },
-          },
-        },
+    const credentialsSchema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['email', 'password'],
+      properties: {
+        email: { type: 'string', minLength: 1, maxLength: 254 },
+        password: { type: 'string', minLength: 12, maxLength: 1024 },
       },
+    };
+    app.post<{ Body: LocalCredentials }>(
+      '/api/auth/local/register',
+      { schema: { body: credentialsSchema } },
       async (request, reply) => {
         auth.limit(`local:${request.ip}`);
         const token = await local.register(request.body, request.cookies[sessionCookieName]);
@@ -173,16 +161,7 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     );
     app.post<{ Body: LocalCredentials }>(
       '/api/auth/local/login',
-      {
-        schema: {
-          body: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['email', 'password'],
-            properties: credentialProperties,
-          },
-        },
-      },
+      { schema: { body: credentialsSchema } },
       async (request, reply) => {
         auth.limit(`local:${request.ip}`);
         const token = await local.login(request.body, request.cookies[sessionCookieName]);
@@ -301,22 +280,10 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     reply.clearCookie(flowCookieName, flowCookie);
     return { ok: true };
   });
-  app.post<{ Body: { agreeToRules: boolean } }>(
+  app.post(
     '/api/auth/register',
-    {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['agreeToRules'],
-          additionalProperties: false,
-          properties: { agreeToRules: { const: true } },
-        },
-      },
-    },
-    async (request) =>
-      service.session(
-        auth.registerAccount(request.cookies[sessionCookieName], request.body.agreeToRules),
-      ),
+    { schema: { body: { type: 'object', additionalProperties: false, maxProperties: 0 } } },
+    async (request) => service.session(auth.registerAccount(request.cookies[sessionCookieName])),
   );
   const linkToken = (request: FastifyRequest): string =>
     typeof request.headers['x-commission-link'] === 'string'

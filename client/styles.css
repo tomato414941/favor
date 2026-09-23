@@ -608,7 +608,6 @@ textarea:focus {
   gap: 20px;
 }
 .account-fields .field,
-.account-fields .registration-agreement,
 .account-fields .inline-error {
   margin: 0;
 }
@@ -624,20 +623,6 @@ textarea:focus {
 .account-panel .primary,
 .local-account-form .primary {
   width: 100%;
-}
-.registration-agreement {
-  margin-block: 22px;
-}
-.registration-terms {
-  color: var(--muted);
-  font-size: 12px;
-}
-.registration-terms ul {
-  margin: 12px 0 0;
-  padding-left: 18px;
-}
-.account-panel > .registration-terms {
-  margin-top: 18px;
 }
 .registration-identity {
   display: grid;
@@ -665,11 +650,6 @@ textarea:focus {
 }
 .account-panel .x-login-control {
   margin-top: 22px;
-}
-.alternative-login {
-  margin-top: 22px;
-  font-size: 12px;
-  color: var(--muted);
 }
 summary {
   cursor: pointer;
@@ -1137,25 +1117,15 @@ summary {
   margin: -6px 0 24px;
 }
 .request-link-landing {
-  display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
-  gap: 42px;
+  max-width: 680px;
   padding-top: 40px;
-  align-items: start;
 }
-.request-link-intro h1 {
-  font-size: 26px;
-  margin-bottom: 14px;
+.request-link-reader h1 {
+  font-size: 18px;
 }
-.request-link-intro > p {
+.private-link-note {
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.9;
-}
-.request-link-intro .private-link-note {
-  margin-top: 23px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  margin-top: 16px;
   font-size: 12px;
 }
 .request-link-reader {
@@ -1182,9 +1152,10 @@ summary {
   overflow-wrap: anywhere;
 }
 .link-registration {
-  margin-top: 22px;
-  padding-top: 22px;
-  border-top: 1px solid var(--line);
+  margin-bottom: 22px;
+}
+.link-registration h3 {
+  margin-bottom: 20px;
 }
 .decline-link {
   display: block;
@@ -1198,8 +1169,7 @@ summary {
     gap: 28px;
   }
 
-  .compose-layout,
-  .request-link-landing {
+  .compose-layout {
     grid-template-columns: 210px minmax(0, 1fr);
     gap: 28px;
   }
@@ -1333,20 +1303,7 @@ summary {
     font-size: 11px;
   }
   .request-link-landing {
-    display: block;
     padding-top: 28px;
-  }
-  .request-link-intro {
-    margin-bottom: 25px;
-  }
-  .request-link-intro h1 {
-    font-size: 25px;
-    margin-bottom: 10px;
-  }
-  .request-link-intro .private-link-note {
-    margin-top: 12px;
-    padding-top: 0;
-    border: 0;
   }
   .text-input,
   textarea {

@@ -25,12 +25,10 @@ test('メールアドレスを本人だけに表示し、依頼相手と公開�
     const sender = await local.register({
       email: 'Sender+Art@Example.test',
       password,
-      agreeToRules: true,
     });
     const receiver = await local.register({
       email: 'receiver@example.test',
       password,
-      agreeToRules: true,
     });
     const senderIdentity = auth.identity(sender);
     const receiverIdentity = auth.identity(receiver);

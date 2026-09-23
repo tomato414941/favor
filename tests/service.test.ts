@@ -24,7 +24,7 @@ function setup(options: ConstructorParameters<typeof CommissionService>[3] = {})
   const auth = new AuthService(store, () => now, { allowDemo: true });
   auth.demoLogin('client');
   const recipient = auth.identity(auth.demoLogin('creator')).account;
-  const stranger = auth.registerAccount(auth.demoLogin('other'), true);
+  const stranger = auth.registerAccount(auth.demoLogin('other'));
   const links = new RequestLinkService(service, auth);
   const input: RequestLinkInput = {
     brief: '海辺の喫茶店を舞台にした短い物語をお願いします。',

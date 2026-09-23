@@ -62,9 +62,6 @@ export interface LocalCredentials {
   email: string;
   password: string;
 }
-export interface LocalRegistration extends LocalCredentials {
-  agreeToRules: boolean;
-}
 export type RequestLinkState = 'pending' | 'accepted' | 'cancelled';
 export interface RequestLinkView {
   id: string;

@@ -108,25 +108,11 @@ export function XLoginButton({
   );
 }
 
-function RegistrationTerms() {
-  return (
-    <details className="registration-terms">
-      <summary>依頼の条件</summary>
-      <ul>
-        <li>見積もり・打ち合わせなし</li>
-        <li>修正依頼なし</li>
-        <li>仕上がりは依頼先に一任</li>
-      </ul>
-    </details>
-  );
-}
-
 export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<void> }) {
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const register = mode === 'register';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const locked = useRef(false);
@@ -138,7 +124,7 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
     setError('');
     try {
       await api(`/auth/local/${mode}`, {
-        body: register ? { email, password, agreeToRules: agreed } : { email, password },
+        body: { email, password },
       });
       setPassword('');
       await onChange();
@@ -213,27 +199,13 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
           />
           {register && <p className="hint">12文字以上</p>}
         </div>
-        {register && (
-          <>
-            <RegistrationTerms />
-            <label className="checkbox-line registration-agreement">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(event) => setAgreed(event.target.checked)}
-                required
-              />
-              <span>依頼の条件に同意する</span>
-            </label>
-          </>
-        )}
         {error && (
           <p className="inline-error" role="alert">
             {error}
           </p>
         )}
-        <button className="primary" disabled={busy || (register && !agreed)}>
-          {busy ? '処理しています…' : register ? '同意して登録する' : 'ログインする'}
+        <button className="primary" disabled={busy}>
+          {busy ? '処理しています…' : register ? '登録する' : 'ログインする'}
         </button>
       </fieldset>
     </form>
@@ -251,7 +223,6 @@ export function AccountEntry({
   onChange: () => void;
   initialError: string;
 }) {
-  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
   async function run(register: boolean) {
@@ -259,7 +230,7 @@ export function AccountEntry({
     setError('');
     try {
       await api(register ? '/auth/register' : '/auth/logout', {
-        body: register ? { agreeToRules: agreed } : {},
+        body: {},
       });
       onChange();
     } catch (cause) {
@@ -296,30 +267,15 @@ export function AccountEntry({
                 </button>
               </div>
               <p className="hint">依頼相手にはXの表示名が表示されます</p>
-              <RegistrationTerms />
-              <label className="checkbox-line registration-agreement">
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  disabled={busy}
-                  onChange={(event) => setAgreed(event.target.checked)}
-                />
-                <span>依頼の条件とアカウント情報の利用に同意する</span>
-              </label>
-              <button className="primary" disabled={!agreed || busy} onClick={() => void run(true)}>
-                {busy ? '登録しています…' : '同意して登録する'}
+              <button className="primary" disabled={busy} onClick={() => void run(true)}>
+                {busy ? '登録しています…' : '登録する'}
                 <Arrow />
               </button>
             </>
           ) : options.localLogin ? (
             <>
               <LocalAccountForm onChange={onChange} />
-              {options.xLogin && (
-                <details className="alternative-login">
-                  <summary>Xでログインする</summary>
-                  <XLoginButton />
-                </details>
-              )}
+              {options.xLogin && <XLoginButton />}
             </>
           ) : (
             <>

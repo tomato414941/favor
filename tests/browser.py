@@ -48,8 +48,7 @@ def main():
             form = page.get_by_role('form', name='アカウント登録')
             form.get_by_label('メールアドレス', exact=True).fill(email)
             form.get_by_label('パスワード', exact=True).fill(password)
-            form.get_by_role('checkbox').check()
-            form.get_by_role('button', name='同意して登録する', exact=True).click()
+            form.get_by_role('button', name='登録する', exact=True).click()
 
         def compose(page, brief):
             page.get_by_role('navigation').get_by_role('button', name='依頼を作る', exact=True).click()
@@ -116,7 +115,7 @@ def main():
 
             receiving.goto(url)
             visiting.goto(url)
-            detail = receiving.get_by_role('article', name='届いた依頼', exact=True)
+            detail = receiving.get_by_role('article', name='依頼', exact=True)
             expect(detail).to_contain_text(brief)
             expect(detail).to_contain_text('¥12,000')
             assert receiver.request.get(f'{base}/api/auth/identity').json() is None
@@ -129,7 +128,7 @@ def main():
             layout(receiving, 'recipient-registration')
             register(receiving, receiver_email)
             expect(detail).to_contain_text(f'{receiver_email}として受け取ります')
-            detail.get_by_role('checkbox', name=re.compile('依頼のルールを確認し、この内容')).check()
+            detail.get_by_role('checkbox', name='内容・金額・期限を確認しました', exact=True).check()
 
             def lose_acceptance(route):
                 result = route.fetch()
@@ -197,7 +196,7 @@ def main():
             visiting.goto(old_url)
             expect(visiting.get_by_role('alert')).to_contain_text('この依頼リンクは利用できません')
             visiting.goto(new_url)
-            expect(visiting.get_by_role('article', name='届いた依頼')).to_contain_text(brief2)
+            expect(visiting.get_by_role('article', name='依頼', exact=True)).to_contain_text(brief2)
             visiting.once('dialog', lambda dialog: dialog.accept())
             visiting.get_by_role('button', name='この依頼を見送る', exact=True).click()
             expect(visiting.get_by_role('status')).to_contain_text('依頼を見送りました')

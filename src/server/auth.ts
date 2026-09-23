@@ -97,7 +97,7 @@ export class AuthService {
         )
         .run(subject, handle, name);
       const token = this.localSession(subject);
-      this.registerAccount(token, true);
+      this.registerAccount(token);
       return token;
     });
   }
@@ -219,9 +219,7 @@ export class AuthService {
   registerRecipient(account: SocialAccount): string {
     return this.register(account);
   }
-  registerAccount(token: string | undefined, agreed: boolean): string {
-    if (agreed !== true)
-      throw new DomainError('RULES_REQUIRED', '登録と依頼のルールへの同意が必要です。', 400);
+  registerAccount(token: string | undefined): string {
     return this.store.transaction(() => this.register(this.identity(token).account));
   }
   private register(account: SocialAccount): string {
@@ -237,7 +235,7 @@ export class AuthService {
       .run(id, account.provider, account.subject);
     this.store.db
       .prepare('INSERT INTO registration_consents VALUES (?, ?, ?)')
-      .run(id, 'commission-rules-v1', this.clock());
+      .run(id, 'account-registration-v1', this.clock());
     return id;
   }
 }

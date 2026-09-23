@@ -391,16 +391,8 @@ export function RequestLinkLanding({
         <a className="wordmark" href="/">
           commission
         </a>
-        <span>依頼の確認</span>
       </header>
       <main className="shell request-link-landing">
-        <div className="request-link-intro">
-          <h1>届いた依頼</h1>
-          <p>内容・金額・期限を確認して、依頼を受けるか選んでください。</p>
-          <p className="private-link-note">
-            リンクを知っている人は内容を閲覧できます。第三者への共有はお控えください。
-          </p>
-        </div>
         <div className="request-link-reader">
           {initialError && (
             <div className="message error" role="alert">
@@ -428,9 +420,9 @@ export function RequestLinkLanding({
             </div>
           )}
           {link && (
-            <article className="request-detail" aria-label="届いた依頼">
+            <article className="request-detail" aria-label="依頼">
               <div className="detail-heading">
-                <h2>依頼の内容</h2>
+                <h1>依頼</h1>
                 <span className="status">
                   <i />
                   {link.state === 'accepted' ? '受諾済み' : '受諾待ち'}
@@ -440,9 +432,6 @@ export function RequestLinkLanding({
               <LinkFacts link={link} />
               {link.state === 'pending' && (
                 <div className="detail-actions">
-                  <p>
-                    見積もり・打ち合わせ・リテイク要求はありません。納品期限はリンクの作成日から数え、受諾しても延びません。
-                  </p>
                   {identity ? (
                     <>
                       <div className="link-recipient-account">
@@ -472,9 +461,7 @@ export function RequestLinkLanding({
                           disabled={actions.busy}
                           onChange={(event) => setAgreed(event.target.checked)}
                         />
-                        <span>
-                          依頼のルールを確認し、この内容・金額・期限で受けることに同意します。
-                        </span>
+                        <span>内容・金額・期限を確認しました</span>
                       </label>
                       <button
                         className="primary"
@@ -488,7 +475,6 @@ export function RequestLinkLanding({
                   ) : authenticate ? (
                     <section className="link-registration" aria-label="受け取るアカウント">
                       <h3>受け取るアカウント</h3>
-                      <p className="hint">登録・ログインのあと、受諾を確定できます。</p>
                       {options.localLogin ? (
                         <LocalAccountForm onChange={load} />
                       ) : options.xLogin ? (
@@ -498,17 +484,14 @@ export function RequestLinkLanding({
                       )}
                     </section>
                   ) : (
-                    <>
-                      <p>内容の確認・辞退には登録不要です。受けるときに登録・ログインします。</p>
-                      <button
-                        className="primary"
-                        disabled={actions.busy}
-                        onClick={() => void accept()}
-                      >
-                        受諾へ進む
-                        <Arrow />
-                      </button>
-                    </>
+                    <button
+                      className="primary"
+                      disabled={actions.busy}
+                      onClick={() => void accept()}
+                    >
+                      受諾へ進む
+                      <Arrow />
+                    </button>
                   )}
                   <button
                     className="text-button decline-link"
@@ -521,7 +504,6 @@ export function RequestLinkLanding({
               )}
               {link.requestId && (
                 <div className="detail-actions">
-                  <p>依頼を受け取りました。支払状況と納品期限を確認して、制作を進めてください。</p>
                   <a className="primary" href={`/#request=${link.requestId}`}>
                     依頼一覧へ
                     <Arrow />
@@ -530,6 +512,7 @@ export function RequestLinkLanding({
               )}
             </article>
           )}
+          {link && <p className="private-link-note">このリンクは第三者に共有しないでください</p>}
           {actions.error && !link && (
             <p className="hint">
               <a href="/">登録済みの方は、ログインして依頼一覧を確認できます。</a>

@@ -23,7 +23,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
       method: 'POST',
       url: '/api/auth/local/register',
       headers,
-      payload: { ...credentials, agreeToRules: true },
+      payload: credentials,
     });
     assert.equal(registered.statusCode, 200);
     const session = registered.cookies.find((entry) => entry.name === '__Host-commission_session')!;
