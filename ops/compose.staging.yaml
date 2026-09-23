@@ -24,7 +24,7 @@ services:
     security_opt: [no-new-privileges:true]
     mem_limit: 512m
     healthcheck:
-      test: [CMD, node, -e, "fetch('http://127.0.0.1:' + process.env.COMMISSION_PORT + '/api/health', {headers: {host: new URL(process.env.COMMISSION_PUBLIC_ORIGIN).host}}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: [CMD, node, --input-type=module, -e, "import {get} from 'node:http'; get({hostname: '127.0.0.1', port: process.env.COMMISSION_PORT, path: '/api/health', headers: {host: new URL(process.env.COMMISSION_PUBLIC_ORIGIN).host}}, r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));"]
       interval: 30s
       timeout: 5s
       start_period: 15s
