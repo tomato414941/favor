@@ -15,9 +15,7 @@
 	}
 }
 
-{$COMMISSION_SITE_ADDRESSES} {
-	@previous_host not host {$COMMISSION_HOST}
-	redir @previous_host https://{$COMMISSION_HOST}{uri} 307
+{$COMMISSION_HOST} {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=86400"

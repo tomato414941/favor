@@ -62,8 +62,8 @@ def main():
                     page.screenshot(path=str(artifacts / f"{name}-{width}.png"), full_page=True)
             check_copy(page)
 
-        def login(page, persona, invitation=False):
-            page.get_by_role("button", name="Xでアカウントを確認" if invitation else "Xでログイン", exact=True).click()
+        def login(page, persona):
+            page.get_by_role("button", name="Xでログイン", exact=True).click()
             expect(page.get_by_role("heading", name="検証用アカウント")).to_be_visible()
             page.get_by_role("link", name=f"{persona}として続ける", exact=True).click()
             page.wait_for_load_state("networkidle")

@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=24.14.0 <25" },
+  "engines": {
+    "node": ">=24.14.0 <25"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "node --watch --import ./scripts/env.mjs --import tsx src/server/main.ts --demo",
@@ -13,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:browser": "npm run build -- --logLevel warn && python3 tests/browser_cookie_isolation.py && node scripts/browser.mjs && node scripts/browser.mjs --x",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
+    "format": "prettier --write \"src/**/*.ts\" \"client/**/*.{ts,tsx,css,html}\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"client/**/*.{ts,tsx,css,html}\" \"tests/**/*.ts\""
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",
@@ -29,6 +33,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
+    "prettier": "3.9.6",
     "tsx": "4.23.13",
     "typescript": "7.0.2",
     "vite": "8.3.0"
