@@ -22,9 +22,9 @@ export function RequestForm({ settings: { terms, limits }, busy, submit }: {
     await submit({ brief, amount: Number(amount), visibility, nsfw, agreeToRules: agreed });
   }
   return <form className="request-form" onSubmit={(event) => void onSubmit(event)}>
-    <div className="form-heading"><span className="eyebrow">NEW REQUEST</span><h2>依頼リンクを作成</h2><p>一度のメッセージに、お願いしたいことをまとめて。</p></div>
+    <div className="form-heading"><h2>依頼リンクを作成</h2><p>内容と金額を入力すると、相手に共有するリンクを作成できます。</p></div>
     <fieldset disabled={busy} className="form-fields">
-      <div className="field"><div className="label-row"><label htmlFor="brief">依頼内容</label><span className="required-label">必須</span></div><textarea id="brief" value={brief} onChange={(event) => setBrief(event.target.value)} required maxLength={limits.brief} rows={7} placeholder="描いてほしい風景や、聴いてみたい言葉。好きなところや参考資料のURLも、こちらに。" aria-describedby="brief-hint brief-count" /><div className="field-meta"><span id="brief-hint">送信後の打ち合わせやリテイク要求はできません。</span><span id="brief-count">{number.format(brief.length)} / {number.format(limits.brief)}</span></div></div>
+      <div className="field"><div className="label-row"><label htmlFor="brief">依頼内容</label><span className="required-label">必須</span></div><textarea id="brief" value={brief} onChange={(event) => setBrief(event.target.value)} required maxLength={limits.brief} rows={7} placeholder="依頼したい作品、用途、参考資料のURLなどを記入してください。" aria-describedby="brief-hint brief-count" /><div className="field-meta"><span id="brief-hint">送信後の打ち合わせやリテイク要求はできません。</span><span id="brief-count">{number.format(brief.length)} / {number.format(limits.brief)}</span></div></div>
       <div className="field"><label htmlFor="amount">依頼金額</label><div className="amount-row"><div className="amount-input"><span aria-hidden="true">¥</span><input id="amount" type="number" inputMode="numeric" min={terms.minimumAmount} max={limits.maximumAmount} step="1" value={amount} onChange={(event) => setAmount(event.target.value)} required aria-describedby="amount-hint" /></div><button type="button" className="text-button" onClick={() => setAmount(String(terms.recommendedAmount))}>推奨額にする</button></div><p className="hint" id="amount-hint">最低 {yen(terms.minimumAmount)} · 金額は第三者には公開されません。</p></div>
       <fieldset className="field visibility-options"><legend>納品後の公開範囲</legend><div className="choice-grid">
         {([

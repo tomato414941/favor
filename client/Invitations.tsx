@@ -112,24 +112,24 @@ export function InvitationLanding({ token, options, initialError }: { token: str
   }
 
   return <>
-    <div className="demo-banner"><span className="demo-mark">DEMO</span>{demo ? '体験用のSNSアカウント · 実際の請求は発生しません' : '決済は体験用 · 実際の請求は発生しません'}</div>
-    <header className="header shell invitation-header"><a className="wordmark" href="/">commission<span>↗</span></a><span>創作への招待</span></header>
+    <div className="demo-banner"><span className="demo-mark">試用版</span>{demo ? '体験用のSNSアカウント · 実際の支払いは発生しません' : '実際の支払いは発生しません'}</div>
+    <header className="header shell invitation-header"><a className="wordmark" href="/">commission</a><span>招待の確認</span></header>
     <main className="shell invitation-landing">
-      <div className="invitation-intro"><p className="eyebrow">SOMETHING TO CREATE</p><h1>あなたの創作に、<br />届いた招待。</h1><p>宛先のSNSアカウントで確認すると、<br />依頼内容と金額を読むことができます。</p></div>
+      <div className="invitation-intro"><h1>届いた招待</h1><p>宛先のSNSアカウントでログインすると、依頼内容と金額を確認できます。</p></div>
       <div className="invitation-reader">
         {initialError && <div className="message error" role="alert">{initialError}</div>}
         {actions.error && <div className="message error" role="alert">{actions.error} <button disabled={actions.busy} onClick={() => void actions.run(load)}>再確認</button></div>}
         {notice && <div className="message success" role="status">{notice}</div>}
         {!ready && !actions.error && <p className="loading" role="status">招待を開いています…</p>}
         <section className="identity-card" aria-label="アカウントの確認">
-          <div><p className="eyebrow">ACCOUNT</p><h2>{identity ? identity.account.name : 'アカウントを確認'}</h2>
+          <div><h2>{identity ? identity.account.name : 'アカウントを確認'}</h2>
             <p>{identity ? `@${identity.account.handle} · ${identity.registered ? '登録済み' : 'サービスには未登録'}` : '確認するだけでは、サービスへの登録は行われません。'}</p></div>
           {identity && <button className="text-button" disabled={actions.busy} onClick={() => void logout()}>ログアウト</button>}
           {demo ? <div className="demo-identities"><span>体験用SNSアカウント</span><div className="action-buttons"><button className="quiet-button" disabled={actions.busy} onClick={() => void authenticate('recipient')}>澪のアカウントで確認</button><button className="quiet-button" disabled={actions.busy} onClick={() => void authenticate('other')}>空のアカウントで確認</button></div><p className="hint">実際のSNSへの接続や投稿は行いません。</p></div> : <div className="x-invitation-identity">{!identity && (options.xLogin ? <XLoginButton label="Xでアカウントを確認" disabled={actions.busy} /> : <p>現在、アカウントの確認を利用できません。</p>)}<p className="hint">XのユーザーID・表示名・ユーザー名を、ログインと招待先の確認に使用します。登録すると、表示名は依頼者・作り手の名前として使われます。あなたの代わりに投稿・DMを送ることはありません。</p></div>}
         </section>
         {invitation && <article className="request-detail" aria-label="届いた招待">
-          <div className="detail-heading"><span className="eyebrow">INVITATION DETAILS</span><span className="status"><i />{invitation.state === 'pending' ? '受諾待ち' : invitation.state === 'accepted' ? '受諾済み' : '受付終了'}</span></div>
-          <h2>依頼の内容</h2><p className="detail-parties">{invitation.clientName}からの依頼</p>
+          <div className="detail-heading"><h2>依頼の内容</h2><span className="status"><i />{invitation.state === 'pending' ? '受諾待ち' : invitation.state === 'accepted' ? '受諾済み' : '受付終了'}</span></div>
+          <p className="detail-parties">{invitation.clientName}からの依頼</p>
           <InvitationFacts invitation={invitation} />
           {invitation.state === 'pending' && <div className="detail-actions">
             <p>受けるかどうかは自由に選べます。確認・辞退だけなら登録は不要です。受諾すると依頼者の支払いが確定します。</p>
@@ -142,6 +142,6 @@ export function InvitationLanding({ token, options, initialError }: { token: str
         {identity && <section className="invitation-preferences" aria-label="招待の受信設定"><div><h2>招待の受信設定</h2><p>{blocked ? '招待の受信を停止しています。' : '今後の招待が不要な場合は、登録せずに受信を停止できます。'}</p></div><button className="text-button" disabled={actions.busy} onClick={() => void preference()}>{blocked ? '受信を再開する' : '今後の招待を停止する'}</button></section>}
       </div>
     </main>
-    <footer className="footer shell"><span className="footer-brand">commission</span><span>つくる人の自由を、楽しみに。</span></footer>
+    <footer className="footer shell"><span className="footer-brand">commission</span><span>創作の依頼と納品</span></footer>
   </>;
 }

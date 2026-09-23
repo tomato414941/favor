@@ -76,14 +76,14 @@ def main():
             page = sender.new_page()
             page.goto(base)
             page.wait_for_load_state("networkidle")
-            expect(page.get_by_role("heading", name="いつものアカウントで。")).to_be_visible()
+            expect(page.get_by_role("heading", name="ログイン", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Xでログイン", exact=True)).to_be_visible()
             assert sender.request.get(f"{base}/api/auth/identity").json() is None
             layout(page, "x-login")
             print("Login controls:", page.get_by_role("button").all_text_contents())
 
             login(page, "青葉")
-            expect(page.get_by_role("heading", name="ここから、はじめよう。")).to_be_visible()
+            expect(page.get_by_role("heading", name="登録内容の確認", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="同意して登録する")).to_be_disabled()
             assert sender.request.get(f"{base}/api/auth/identity").json()["registered"] is False
             assert sender.request.get(f"{base}/api/session").status == 401

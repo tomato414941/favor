@@ -73,7 +73,7 @@ def main():
         visiting = visitor.new_page()
         try:
             page.goto(base)
-            expect(page.get_by_role('heading', name='創作の依頼を、ここから。')).to_be_visible()
+            expect(page.get_by_role('heading', name='アカウント', exact=True)).to_be_visible()
             layout(page, 'registration')
             register(page, sender_login, '青葉')
             expect(page.get_by_role('heading', name='依頼リンクを作成')).to_be_visible()

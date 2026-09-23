@@ -117,11 +117,11 @@ export function RequestLinks({ settings, composing, onCreated }: {
     {actions.error && <div className="message error" role="alert">{actions.error} <button disabled={actions.busy} onClick={() => void actions.run(refresh)}>再読み込み</button></div>}
     {!composing && notice && <div className="message success" role="status">{notice}</div>}
     {composing ? <>
-      <section className="intro"><p className="eyebrow"><span /> A LITTLE TRUST, A NEW CREATION</p><h1>好きな創作を、<br />その人の自由で。</h1><p className="intro-copy">お願いしたいことを、ひとつのリンクに。<br />受け取る人のペースで、創作がはじまる。</p><span className="intro-note" aria-hidden="true">Leave a little<br /><i>room for wonder.</i></span></section>
-      <div className="compose-layout invitation-compose"><aside className="invitation-guide"><span className="envelope-mark" aria-hidden="true">↗</span><h2>言葉をまとめて、<br />相手に届ける。</h2><ol><li>内容と金額を決める。</li><li>非公開リンクを相手に渡す。</li><li>相手が受けると、制作がはじまる。</li></ol><p>相手は登録せずに内容を確認できます。受けるときに登録・ログインします。</p><p>リンクを知っている人は閲覧・受諾できます。DMやメールで相手だけに共有してください。</p><p className="hint">受諾期限は作成から{settings.terms.acceptanceDays}日、納品期限は作成から{settings.terms.deliveryDays}日です。リンクの再発行でも期限は変わりません。</p></aside><RequestForm settings={settings} busy={actions.busy} submit={submit} /></div>
+      <section className="intro"><h1>依頼を作る</h1><p className="intro-copy">作成したリンクを、依頼したい相手に共有してください。</p></section>
+      <div className="compose-layout invitation-compose"><aside className="invitation-guide"><h2>依頼の流れ</h2><ol><li>内容と金額を決める</li><li>リンクを相手に共有する</li><li>相手が受諾すると制作開始</li></ol><p>相手は登録せずに内容を確認できます。受けるときに登録・ログインします。</p><p className="share-reminder">リンクを知っている人は閲覧・受諾できます。DMやメールで相手だけに共有してください。</p><dl className="guide-deadlines"><div><dt>受諾期限</dt><dd>作成から{settings.terms.acceptanceDays}日</dd></div><div><dt>納品期限</dt><dd>作成から{settings.terms.deliveryDays}日</dd></div></dl><p className="hint">リンクを再発行しても期限は変わりません。</p></aside><RequestForm settings={settings} busy={actions.busy} submit={submit} /></div>
     </> : <><div className="invitation-list-heading"><h2>送った依頼リンク</h2><button className="text-button" disabled={actions.busy} onClick={() => void actions.run(refresh)}>最新の状態を確認</button></div>
       {pending.length ? <div className="invitation-list">{pending.map((link) => <article className="request-detail invitation-card" key={link.id} aria-label="依頼リンク">
-        <div className="detail-heading"><span className="eyebrow">REQUEST LINK</span><span className={`status status-${link.state === 'pending' ? 'awaiting_acceptance' : 'cancelled'}`}><i />{link.state === 'pending' ? '受諾待ち' : '受付終了'}</span></div>
+        <div className="detail-heading"><span className="eyebrow">共有した依頼</span><span className={`status status-${link.state === 'pending' ? 'awaiting_acceptance' : 'cancelled'}`}><i />{link.state === 'pending' ? '受諾待ち' : '受付終了'}</span></div>
         <h2>{link.state === 'pending' ? '相手の受諾を待っています' : 'この依頼の受付は終了しました'}</h2><LinkFacts link={link} />
         {link.state === 'pending' ? <div className="invitation-share">{urls[link.id] ? <><label htmlFor={`link-${link.id}`}>依頼リンク</label><div className="link-row"><input id={`link-${link.id}`} className="text-input" value={urls[link.id]} readOnly onFocus={(event) => event.target.select()} /><button className="quiet-button" disabled={actions.busy} onClick={() => void copy(urls[link.id]!)}>コピー</button></div></> : <p className="hint">共有するリンクが必要な場合は再発行してください。</p>}<p className="hint">相手だけに共有してください。リンクの作成だけでは通知は送られません。</p><div className="action-buttons"><button className="quiet-button" disabled={actions.busy} onClick={() => void reissue(link)}>リンクを再発行</button><button className="text-button" disabled={actions.busy} onClick={() => void withdraw(link)}>依頼を取り消す</button></div></div> : <p className="cancellation-note">{link.cancelledReason === 'declined' ? '相手が依頼を見送りました。' : link.cancelledReason === 'expired' ? '受諾期限を過ぎました。' : '依頼を取り消しました。'}支払確保を解除しました。</p>}
       </article>)}</div> : <p className="empty-invitations">受諾待ちの依頼はありません。</p>}</>}
@@ -159,17 +159,17 @@ export function RequestLinkLanding({ token, options, initialError }: { token: st
     });
   }
   return <>
-    <div className="demo-banner"><span className="demo-mark">DEMO</span>決済は体験用 · 実際の請求は発生しません</div>
-    <header className="header shell invitation-header"><a className="wordmark" href="/">commission<span>↗</span></a><span>あなたに届いた依頼</span></header>
-    <main className="shell invitation-landing"><div className="invitation-intro"><p className="eyebrow">SOMETHING TO CREATE</p><h1>あなたの創作に、<br />届いた依頼。</h1><p>内容と金額、期限を確かめて。<br />受けるかどうかは、あなたが選べます。</p><p className="private-link-note">このリンクはあなた宛てのものです。<br />ほかの人への共有はお控えください。</p></div>
+    <div className="demo-banner"><span className="demo-mark">試用版</span>実際の支払いは発生しません</div>
+    <header className="header shell invitation-header"><a className="wordmark" href="/">commission</a><span>依頼の確認</span></header>
+    <main className="shell invitation-landing"><div className="invitation-intro"><h1>届いた依頼</h1><p>内容・金額・期限を確認して、依頼を受けるか選んでください。</p><p className="private-link-note">リンクを知っている人は内容を閲覧できます。第三者への共有はお控えください。</p></div>
       <div className="invitation-reader">
         {initialError && <div className="message error" role="alert">{initialError}</div>}
         {actions.error && <div className="message error" role="alert">{actions.error} <button disabled={actions.busy} onClick={() => void actions.run(load)}>再確認</button></div>}
         {!ready && !actions.error && <p className="loading" role="status">依頼を開いています…</p>}
         {declined && <div className="request-detail" role="status"><h2>依頼を見送りました</h2><p className="account-copy">支払確保を解除しました。ご確認ありがとうございました。</p><a href="/">ホームへ</a></div>}
         {link && <article className="request-detail" aria-label="届いた依頼">
-          <div className="detail-heading"><span className="eyebrow">REQUEST DETAILS</span><span className="status"><i />{link.state === 'accepted' ? '受諾済み' : '受諾待ち'}</span></div>
-          <h2>依頼の内容</h2><p className="detail-parties">{link.clientName}からの依頼</p><LinkFacts link={link} />
+          <div className="detail-heading"><h2>依頼の内容</h2><span className="status"><i />{link.state === 'accepted' ? '受諾済み' : '受諾待ち'}</span></div>
+          <p className="detail-parties">{link.clientName}からの依頼</p><LinkFacts link={link} />
           {link.state === 'pending' && <div className="detail-actions"><p>見積もり・打ち合わせ・リテイク要求はありません。納品期限はリンクの作成日から数え、受諾しても延びません。</p>
             {identity ? <><div className="link-recipient-account"><span><strong>{identity.account.name}</strong>として受け取ります。</span><button className="text-button" disabled={actions.busy} onClick={() => void actions.run(async () => { await api('/auth/logout', {}); setIdentity(null); setAgreed(false); setAuthenticate(true); })}>別のアカウントを使う</button></div><label className="checkbox-line invitation-agreement"><input type="checkbox" checked={agreed} disabled={actions.busy} onChange={(event) => setAgreed(event.target.checked)} /><span>依頼のルールを確認し、この内容・金額・期限で受けることに同意します。</span></label><button className="primary" disabled={actions.busy || !agreed} onClick={() => void accept()}>この依頼を受ける<Arrow /></button></> : authenticate ? <section className="link-registration" aria-label="受け取るアカウント"><h3>受け取るアカウント</h3><p className="hint">登録・ログインのあと、受諾を確定できます。</p>{options.localLogin ? <LocalAccountForm onChange={load} /> : options.xLogin ? <XLoginButton /> : <p>現在、登録・ログインを利用できません。</p>}</section> : <><p>内容の確認・辞退には登録不要です。受けるときに登録・ログインします。</p><button className="primary" disabled={actions.busy} onClick={() => void accept()}>受諾へ進む<Arrow /></button></>}
             <button className="text-button decline-link" disabled={actions.busy} onClick={() => void decline()}>この依頼を見送る</button>
@@ -178,6 +178,6 @@ export function RequestLinkLanding({ token, options, initialError }: { token: st
         </article>}
         {actions.error && !link && <p className="hint"><a href="/">登録済みの方は、ログインして依頼一覧を確認できます。</a></p>}
       </div>
-    </main><footer className="footer shell"><span className="footer-brand">commission</span><span>つくる人の自由を、楽しみに。</span></footer>
+    </main><footer className="footer shell"><span className="footer-brand">commission</span><span>創作の依頼と納品</span></footer>
   </>;
 }

@@ -124,21 +124,21 @@ function Workspace({ initialRequestId, options, onSessionChange }: { initialRequ
   const navigate = (next: Page) => { setPage(next); setError(''); setNotice(''); };
   const selected = requests.find((request) => request.id === selectedId);
   return <>
-    <div className="demo-banner"><span className="demo-mark">DEMO</span>決済は体験用 · 実際の請求は発生しません</div>
-    <header className="header shell"><button className="wordmark" onClick={() => navigate('compose')} aria-label="commission ホーム">commission<span>↗</span></button>
+    <div className="demo-banner"><span className="demo-mark">試用版</span>実際の支払いは発生しません</div>
+    <header className="header shell"><button className="wordmark" onClick={() => navigate('compose')} aria-label="commission ホーム">commission</button>
       {session && <><nav aria-label="メインナビゲーション"><button aria-current={page === 'compose' ? 'page' : undefined} onClick={() => navigate('compose')}>依頼を作る</button><button aria-current={page === 'requests' ? 'page' : undefined} onClick={() => navigate('requests')}>依頼一覧</button></nav><div className="account-menu"><span>{session.name}</span><button className="text-button" disabled={busy} onClick={() => void run(async () => { await api('/auth/logout', {}); onSessionChange(); })}>ログアウト</button></div></>}
     </header>
     <main className="shell">
       {error && <div className="message error" role="alert">{error} <button disabled={busy} onClick={() => session ? void run(refresh) : setAttempt((value) => value + 1)}>再読み込み</button></div>}
       {notice && <div className="message success" role="status">{notice}</div>}
       {!settings || !session ? <div className="loading" role="status">{error ? '接続をお確かめください。' : 'ページを開いています…'}</div> : <>
-        {page === 'requests' && <div className="section-heading workspace-heading"><div><p className="eyebrow">YOUR COMMISSIONS</p><h1>あなたの依頼</h1></div><button className="quiet-button" onClick={() => navigate('compose')}>依頼を作る<Arrow /></button></div>}
+        {page === 'requests' && <div className="section-heading workspace-heading"><h1>依頼一覧</h1><button className="quiet-button" onClick={() => navigate('compose')}>依頼を作る</button></div>}
         <RequestLinks settings={settings} composing={page === 'compose'} onCreated={() => navigate('requests')} />
         {page === 'requests' && <section className="requests-section"><div className="section-heading"><h2>制作・納品</h2><span className="total">{requests.length} 件</span></div>
-          {requests.length ? <div className="requests-layout"><div className="request-list" aria-label="依頼を選択">{requests.map((request) => <button key={request.id} className={`request-item ${request.id === selectedId ? 'selected' : ''}`} aria-pressed={request.id === selectedId} onClick={() => { setSelectedId(request.id); setError(''); setNotice(''); }}><span className="request-item-top"><Status request={request} /><span className="request-direction">{request.viewerRole === 'creator' ? '受けた依頼' : '送った依頼'}</span></span><span className="request-excerpt">{request.brief}</span><span className="request-item-bottom"><span>{request.viewerRole === 'creator' ? request.clientName : request.creatorName}</span><span>{yen(request.amount ?? 0)}</span></span></button>)}</div>{selected && <RequestDetail key={`${selected.viewerRole}:${selected.id}`} request={selected} role={selected.viewerRole ?? session.role} limits={settings.limits} busy={busy} act={act} />}</div> : <div className="empty-state"><span className="empty-symbol" aria-hidden="true">c.</span><h2>これから、創作がはじまります</h2><p>受諾した依頼は、ここで制作・納品の状況を確認できます。</p></div>}
+          {requests.length ? <div className="requests-layout"><div className="request-list" aria-label="依頼を選択">{requests.map((request) => <button key={request.id} className={`request-item ${request.id === selectedId ? 'selected' : ''}`} aria-pressed={request.id === selectedId} onClick={() => { setSelectedId(request.id); setError(''); setNotice(''); }}><span className="request-item-top"><Status request={request} /><span className="request-direction">{request.viewerRole === 'creator' ? '受けた依頼' : '送った依頼'}</span></span><span className="request-excerpt">{request.brief}</span><span className="request-item-bottom"><span>{request.viewerRole === 'creator' ? request.clientName : request.creatorName}</span><span>{yen(request.amount ?? 0)}</span></span></button>)}</div>{selected && <RequestDetail key={`${selected.viewerRole}:${selected.id}`} request={selected} role={selected.viewerRole ?? session.role} limits={settings.limits} busy={busy} act={act} />}</div> : <div className="empty-state"><h2>制作中・納品済みの依頼はありません</h2><p>受諾した依頼は、ここで制作・納品の状況を確認できます。</p></div>}
         </section>}
       </>}
-    </main><footer className="footer shell"><span className="footer-brand">commission</span><span>つくる人の自由を、楽しみに。</span><span className="footer-note">決済は体験用です</span></footer>
+    </main><footer className="footer shell"><span className="footer-brand">commission</span><span>創作の依頼と納品</span></footer>
   </>;
 }
 
@@ -149,8 +149,8 @@ function RequestDetail({ request, role, limits, busy, act }: { request: RequestV
     if (window.confirm(message)) void act(request, 'cancel');
   }
   return <article className="request-detail" aria-label="依頼の詳細">
-    <div className="detail-heading"><span className="eyebrow">REQUEST DETAILS</span><Status request={request} /></div>
-    <h2>依頼の詳細</h2><p className="detail-parties">{request.clientName} <Arrow /> {request.creatorName}</p>
+    <div className="detail-heading"><h2>依頼の詳細</h2><Status request={request} /></div>
+    <p className="detail-parties">{request.clientName} <Arrow /> {request.creatorName}</p>
     {request.state !== 'cancelled' && <ol className="timeline" aria-label="取引の流れ">{['依頼を送信', '承認・制作', '納品'].map((label, index) => {
       const step = request.state === 'delivered' ? 2 : request.state === 'accepted' ? 1 : 0;
       return <li className={index <= step ? 'reached' : ''} aria-current={index === step ? 'step' : undefined} key={label}><span>{index < step ? '✓' : String(index + 1).padStart(2, '0')}</span>{label}</li>;

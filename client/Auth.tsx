@@ -72,13 +72,13 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
   }
   return <form className="local-account-form" onSubmit={(event) => void submit(event)} aria-label={register ? 'アカウント登録' : 'ログイン'}>
     <div className="account-tabs"><button type="button" aria-pressed={register} disabled={busy} onClick={() => { setRegister(true); setError(''); }}>新規登録</button><button type="button" aria-pressed={!register} disabled={busy} onClick={() => { setRegister(false); setError(''); }}>ログイン</button></div>
-    <fieldset disabled={busy}>
-      {register && <div className="field"><label htmlFor="account-name">表示名</label><input id="account-name" className="text-input" value={name} onChange={(event) => setName(event.target.value)} autoComplete="nickname" maxLength={80} required /><p className="hint">依頼者・作り手として表示する名前です。</p></div>}
-      <div className="field"><label htmlFor="account-login">ログインID</label><input id="account-login" className="text-input" value={login} onChange={(event) => setLogin(event.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9_-]{2,31}" required />{register && <p className="hint">英数字・ハイフン・アンダースコアの3〜32文字。先頭は英数字。</p>}</div>
-      <div className="field"><label htmlFor="account-password">パスワード</label><input id="account-password" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={register ? 'new-password' : 'current-password'} minLength={12} maxLength={1024} required />{register && <p className="hint">12文字以上で設定し、ログインIDと一緒に保管してください。</p>}</div>
+    <fieldset disabled={busy} className={`account-fields ${register ? 'is-register' : ''}`}>
+      {register && <div className="field"><label htmlFor="account-name">表示名</label><input id="account-name" className="text-input" value={name} onChange={(event) => setName(event.target.value)} autoComplete="nickname" maxLength={80} required /><p className="hint">相手に表示される名前です。</p></div>}
+      <div className="field"><label htmlFor="account-login">ログインID</label><input id="account-login" className="text-input" value={login} onChange={(event) => setLogin(event.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9_-]{2,31}" required />{register && <p className="hint">英数字・_・-で3〜32文字。先頭は英数字。</p>}</div>
+      <div className="field password-field"><label htmlFor="account-password">パスワード</label><input id="account-password" className="text-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={register ? 'new-password' : 'current-password'} minLength={12} maxLength={1024} required />{register && <p className="hint">12文字以上で設定してください。</p>}</div>
       {register && <><ul className="registration-rules"><li>見積もり・打ち合わせ・リテイク要求は行いません。</li><li>作り手は受けたい依頼を選び、表現や仕上がりを自由に決めます。</li></ul><label className="checkbox-line registration-agreement"><input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} required /><span>依頼のルールを確認し、サービスへの登録に同意します。</span></label></>}
       {error && <p className="inline-error" role="alert">{error}</p>}
-      <button className="primary" disabled={busy || (register && !agreed)}>{busy ? '処理しています…' : register ? '同意して登録する' : 'ログインする'}<Arrow /></button>
+      <button className="primary" disabled={busy || (register && !agreed)}>{busy ? '処理しています…' : register ? '同意して登録する' : 'ログインする'}</button>
     </fieldset>
   </form>;
 }
@@ -96,13 +96,21 @@ export function AccountEntry({ options, identity, onChange, initialError }: {
     finally { setBusy(false); }
   }
   return <>
-    <div className="demo-banner"><span className="demo-mark">DEMO</span>決済は体験用 · 実際の請求は発生しません</div>
-    <header className="header shell invitation-header"><a className="wordmark" href="/">commission<span>↗</span></a><span>つくる人の自由を、楽しみに。</span></header>
+    <div className="demo-banner"><span className="demo-mark">試用版</span>実際の支払いは発生しません</div>
+    <header className="header shell invitation-header"><a className="wordmark" href="/">commission</a><span>創作の依頼と納品</span></header>
     <main className="shell account-layout">
-      <section className="account-intro"><p className="eyebrow">A LITTLE TRUST, A NEW CREATION</p><h1>好きな創作を、<br />その人の自由で。</h1><p>届けたい言葉と、応援の気持ちを。<br />あとは、作り手の感性におまかせ。</p><span className="account-signature" aria-hidden="true">Leave a little<br /><i>room for wonder.</i></span></section>
+      <section className="account-intro">
+        <h1>依頼を作って、<br />リンクで渡す。</h1>
+        <p>内容と金額を決めて、依頼したい相手にリンクを共有。受諾から納品まで、ここで管理できます。</p>
+        <ol className="entry-steps">
+          <li><strong>依頼内容をまとめる</strong><p>お願いしたいことと、支払う金額を決めます。</p></li>
+          <li><strong>相手にリンクを渡す</strong><p>受け取った相手は、登録前に内容を確認できます。</p></li>
+          <li><strong>受諾後、作品を受け取る</strong><p>作り手が依頼を受けると制作が始まります。</p></li>
+        </ol>
+        <p className="entry-note">見積もり・打ち合わせ・リテイクのない依頼です。表現や仕上がりは作り手に任せます。</p>
+      </section>
       <section className="account-panel" aria-label={identity ? 'サービスへの登録' : 'ログイン'}>
-        <p className="eyebrow">{identity ? 'ONE ACCOUNT, BOTH SIDES' : 'WELCOME TO COMMISSION'}</p>
-        <h2>{identity ? 'ここから、はじめよう。' : options.localLogin ? '創作の依頼を、ここから。' : 'いつものアカウントで。'}</h2>
+        <h2>{identity ? '登録内容の確認' : options.localLogin ? 'アカウント' : 'ログイン'}</h2>
         {error && <p className="inline-error" role="alert">{error}</p>}
         {identity ? <>
           <div className="registration-identity"><strong>{identity.account.name}</strong><span>@{identity.account.handle}</span><button className="text-button" disabled={busy} onClick={() => void run(false)}>別のアカウントを使う</button></div>
@@ -111,13 +119,13 @@ export function AccountEntry({ options, identity, onChange, initialError }: {
           <p className="hint">XのユーザーID・表示名・ユーザー名を、ログインと招待先の確認に使用します。表示名は依頼者・作り手の名前として使われます。</p>
           <label className="checkbox-line registration-agreement"><input type="checkbox" checked={agreed} disabled={busy} onChange={(event) => setAgreed(event.target.checked)} /><span>依頼のルールとアカウント情報の利用を確認し、サービスへの登録に同意します。</span></label>
           <button className="primary" disabled={!agreed || busy} onClick={() => void run(true)}>{busy ? '登録しています…' : '同意して登録する'}<Arrow /></button>
-        </> : options.localLogin ? <><p className="account-copy">依頼を作って、相手にリンクを届けましょう。ひとつのアカウントで、依頼を送ることも受け取ることもできます。</p><LocalAccountForm onChange={onChange} />{options.xLogin && <details className="alternative-login"><summary>Xでログインする</summary><XLoginButton /></details>}</> : <>
+        </> : options.localLogin ? <><p className="account-copy">同じアカウントで依頼の作成・受諾・納品ができます。</p><LocalAccountForm onChange={onChange} />{options.xLogin && <details className="alternative-login"><summary>Xでログインする</summary><XLoginButton /></details>}</> : <>
           <p className="account-copy">Xでログインして、創作の依頼をはじめましょう。はじめての方は、アカウントの確認後に登録へ進めます。</p>
           {options.xLogin ? <XLoginButton /> : <p className="inline-error" role="status">現在、ログインを利用できません。時間をおいてお試しください。</p>}
           <p className="hint account-privacy">あなたの代わりに投稿・DMを送ることはありません。<br />Xのパスワードを、このサービスに入力する必要はありません。</p>
         </>}
       </section>
     </main>
-    <footer className="footer shell"><span className="footer-brand">commission</span><span>つくる人の自由を、楽しみに。</span></footer>
+    <footer className="footer shell"><span className="footer-brand">commission</span><span>創作の依頼と納品</span></footer>
   </>;
 }
