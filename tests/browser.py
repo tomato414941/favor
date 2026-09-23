@@ -197,8 +197,21 @@ def main():
             expect(visiting.get_by_role('alert')).to_contain_text('この依頼リンクは利用できません')
             visiting.goto(new_url)
             expect(visiting.get_by_role('article', name='依頼', exact=True)).to_contain_text(brief2)
-            visiting.once('dialog', lambda dialog: dialog.accept())
-            visiting.get_by_role('button', name='この依頼を見送る', exact=True).click()
+            decline_button = visiting.get_by_role('button', name='この依頼を見送る', exact=True)
+            confirmation = visiting.get_by_role('group', name='この依頼を見送りますか？', exact=True)
+            for cancel in ['button', 'escape']:
+                decline_button.click()
+                expect(confirmation.get_by_role('button', name='戻る', exact=True)).to_be_focused()
+                if cancel == 'button':
+                    confirmation.get_by_role('button', name='戻る', exact=True).click()
+                else:
+                    visiting.keyboard.press('Escape')
+                expect(decline_button).to_be_focused()
+                current_link = visitor.request.get(f'{base}/api/link', headers={'X-Commission-Link': new_url.split('#link=')[1]})
+                assert current_link.json()['state'] == 'pending'
+            decline_button.click()
+            layout(visiting, 'decline-confirmation')
+            confirmation.get_by_role('button', name='見送る', exact=True).click()
             expect(visiting.get_by_role('status')).to_contain_text('依頼を見送りました')
             assert visitor.request.get(f'{base}/api/auth/identity').json() is None
             layout(visiting, 'declined')

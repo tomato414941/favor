@@ -351,6 +351,8 @@ export function RequestLinkLanding({
   const [authenticate, setAuthenticate] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [declined, setDeclined] = useState(false);
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const declineButton = useRef<HTMLButtonElement>(null);
   const actions = useLinkActions();
   async function load() {
     setLink(null);
@@ -375,12 +377,15 @@ export function RequestLinkLanding({
     });
   }
   async function decline() {
-    if (!window.confirm('この依頼を見送りますか？リンクを無効にし、支払確保を解除します。')) return;
     await actions.run(async () => {
       await actions.mutate('/link/decline', {}, token);
       setLink(null);
       setDeclined(true);
     });
+  }
+  function cancelDecline() {
+    setConfirmingDecline(false);
+    requestAnimationFrame(() => declineButton.current?.focus());
   }
   return (
     <>
@@ -493,13 +498,48 @@ export function RequestLinkLanding({
                       <Arrow />
                     </button>
                   )}
-                  <button
-                    className="text-button decline-link"
-                    disabled={actions.busy}
-                    onClick={() => void decline()}
-                  >
-                    この依頼を見送る
-                  </button>
+                  {confirmingDecline ? (
+                    <div
+                      className="decline-confirmation"
+                      role="group"
+                      aria-labelledby="decline-question"
+                      aria-busy={actions.busy}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape' && !actions.busy) {
+                          event.preventDefault();
+                          cancelDecline();
+                        }
+                      }}
+                    >
+                      <p id="decline-question">この依頼を見送りますか？</p>
+                      <div className="action-buttons">
+                        <button
+                          className="quiet-button"
+                          disabled={actions.busy}
+                          autoFocus
+                          onClick={cancelDecline}
+                        >
+                          戻る
+                        </button>
+                        <button
+                          className="quiet-button confirm-decline"
+                          disabled={actions.busy}
+                          onClick={() => void decline()}
+                        >
+                          見送る
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      ref={declineButton}
+                      className="text-button decline-link"
+                      disabled={actions.busy}
+                      onClick={() => setConfirmingDecline(true)}
+                    >
+                      この依頼を見送る
+                    </button>
+                  )}
                 </div>
               )}
               {link.requestId && (

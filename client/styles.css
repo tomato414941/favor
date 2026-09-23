@@ -1161,6 +1161,17 @@ summary {
   display: block;
   margin-top: 20px;
 }
+.decline-confirmation {
+  margin-top: 20px;
+}
+.decline-confirmation > p {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.confirm-decline {
+  color: var(--danger);
+  border-color: currentColor;
+}
 @media (max-width: 980px) {
   .shell {
     width: calc(100% - 48px);
