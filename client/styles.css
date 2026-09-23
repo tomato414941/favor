@@ -130,8 +130,6 @@ textarea::placeholder { color: #858b91; }
 .account-tabs button[aria-pressed='true'] { color: var(--ink); font-weight: 600; }
 .account-tabs button[aria-pressed='true']::after { position: absolute; content: ''; inset-inline: 0; bottom: -1px; height: 2px; background: var(--ink); }
 .account-fields { display: grid; gap: 20px; }
-.account-fields.is-register { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 16px; }
-.account-fields > :not(.field), .account-fields > .password-field { grid-column: 1 / -1; }
 .account-fields .field, .account-fields .registration-agreement, .account-fields .inline-error { margin: 0; }
 .local-account-form .field label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 600; }
 .local-account-form .hint { font-size: 11px; }
@@ -251,6 +249,7 @@ summary { cursor: pointer; }
 .invitation-preferences h2 { font-size: 14px; }
 .invitation-preferences p { font-size: 12px; color: var(--muted); line-height: 1.9; margin-top: 6px; }
 .link-recipient-account { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; font-size: 13px; }
+.link-recipient-account > span { min-width: 0; overflow-wrap: anywhere; }
 .link-registration { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
 .decline-link { display: block; margin-top: 20px; }
 @media (max-width: 980px) {
@@ -312,7 +311,6 @@ summary { cursor: pointer; }
   .footer { padding-block: 20px 24px; }
 }
 @media (max-width: 480px) {
-  .account-fields.is-register { grid-template-columns: minmax(0, 1fr); }
   .account-menu > span { max-width: 68px; }
   .invitation-header > span { font-size: 10px; }
   .demo-banner { gap: 8px; font-size: 10px; }

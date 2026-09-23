@@ -187,8 +187,8 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
   const store = new Store();
   const app = await buildApp(new CommissionService(store), { localAuth: true });
   const headers = { 'x-commission-action': '1' };
-  const register = async (login: string) => {
-    const response = await app.inject({ method: 'POST', url: '/api/auth/local/register', headers, payload: { login, password: 'long-password-for-test', name: login, agreeToRules: true } });
+  const register = async (name: string) => {
+    const response = await app.inject({ method: 'POST', url: '/api/auth/local/register', headers, payload: { email: `${name}@example.test`, password: 'long-password-for-test', agreeToRules: true } });
     assert.equal(response.statusCode, 200);
     return String(response.headers['set-cookie']).split(';')[0]!;
   };
@@ -232,14 +232,14 @@ test('アカウントを再起動後も使い、ログイン・ログアウト�
   try {
     let auth = new AuthService(store, clock, { allowLocal: true });
     let local = new LocalAuth(auth);
-    const input = { login: ' Aoba_ID ', password: 'correct-horse-battery', name: '青葉', agreeToRules: true };
+    const input = { email: ' Aoba+Art@Example.TEST ', password: 'correct-horse-battery', agreeToRules: true };
     const token = await local.register(input);
     const user = auth.actor(token);
-    assert.equal(auth.identity(token).account.handle, 'aoba_id');
+    assert.equal(auth.identity(token).email, 'aoba+art@example.test');
     store.close(); store = new Store(path);
     auth = new AuthService(store, clock, { allowLocal: true }); local = new LocalAuth(auth);
     assert.equal(auth.actor(token), user);
-    await assert.rejects(local.login({ login: 'aoba_id', password: 'incorrect-password' }), errorCode('UNAUTHORIZED'));
+    await assert.rejects(local.login({ email: 'aoba+art@example.test', password: 'incorrect-password' }), errorCode('UNAUTHORIZED'));
     assert.equal(auth.actor(token), user);
     const rotated = await local.login(input, token);
     assert.equal(auth.actor(rotated), user);
@@ -249,18 +249,20 @@ test('アカウントを再起動後も使い、ログイン・ログアウト�
     const next = await local.login(input);
     now += 86_400_000;
     assert.throws(() => auth.actor(next), errorCode('UNAUTHORIZED'));
-    await assert.rejects(local.register(input), errorCode('LOGIN_TAKEN'));
+    await assert.rejects(local.register({ ...input, email: 'aoba+art@example.test' }), errorCode('EMAIL_TAKEN'));
   } finally { store.close(); rmSync(directory, { recursive: true }); }
 });
 
 test('登録の入力・同意とログイン試行の上限を検証する', async () => {
   const s = setup();
   const local = new LocalAuth(s.auth);
-  const account = { login: 'recipient', password: 'long-password-for-test', name: '澪', agreeToRules: true };
+  const account = { email: 'recipient@example.test', password: 'long-password-for-test', agreeToRules: true };
   try {
     await assert.rejects(local.register({ ...account, agreeToRules: false }), errorCode('RULES_REQUIRED'));
     await assert.rejects(local.register({ ...account, password: 'short' }), errorCode('INVALID_PASSWORD'));
-    await assert.rejects(local.register({ ...account, login: 'bad/login' }), errorCode('INVALID_LOGIN'));
+    for (const email of ['not-an-email', 'two@@example.test', '.leading@example.test', 'two..dots@example.test', 'a@-example.test', 'a@example-.test', 'a@local', 'a\nb@example.test', `${'a'.repeat(65)}@example.test`, `a@${'a'.repeat(64)}.test`]) {
+      await assert.rejects(local.register({ ...account, email }), errorCode('INVALID_EMAIL'));
+    }
     const registered = await local.register(account);
     assert.equal(s.auth.identity(registered).registered, true);
     for (let i = 0; i < 10; i++) await assert.rejects(local.login({ ...account, password: 'wrong-password-1234' }), errorCode('UNAUTHORIZED'));

@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { InvitationInput, InvitationLinkResult, InvitationView, LocalCredentials, LocalRegistration, RequestInput, RequestLinkInput, UploadInput } from '../shared.js';
+import type { InvitationInput, InvitationLinkResult, InvitationView, LocalCredentials, LocalMigration, LocalRegistration, RequestInput, RequestLinkInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
 import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { InvitationService } from './invitations.js';
@@ -85,10 +85,10 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   app.get('/api/health', async () => ({ ok: true, mode: 'demo', demoAuth: options.demoAuth === true }));
   app.get('/api/auth/options', async () => ({ mode: x ? 'x' : options.demoAuth ? 'demo' : local ? 'local' : 'disabled', xLogin: Boolean(x), invitationLookup: options.demoAuth === true || Boolean(x?.provider.lookupEnabled), ...(local ? { localLogin: true } : {}) }));
   if (local) {
-    const credentialProperties = { login: { type: 'string', minLength: 3, maxLength: 32 }, password: { type: 'string', minLength: 12, maxLength: 1024 } };
+    const credentialProperties = { email: { type: 'string', minLength: 1, maxLength: 254 }, password: { type: 'string', minLength: 12, maxLength: 1024 } };
     app.post<{ Body: LocalRegistration }>('/api/auth/local/register', {
-      schema: { body: { type: 'object', additionalProperties: false, required: ['login', 'password', 'name', 'agreeToRules'], properties: {
-        ...credentialProperties, name: { type: 'string', minLength: 1, maxLength: 80 }, agreeToRules: { const: true },
+      schema: { body: { type: 'object', additionalProperties: false, required: ['email', 'password', 'agreeToRules'], properties: {
+        ...credentialProperties, agreeToRules: { const: true },
       } } },
     }, async (request, reply) => {
       auth.limit(`local:${request.ip}`);
@@ -97,10 +97,20 @@ export async function buildApp(service: CommissionService, options: AppOptions =
       return auth.identity(token);
     });
     app.post<{ Body: LocalCredentials }>('/api/auth/local/login', {
-      schema: { body: { type: 'object', additionalProperties: false, required: ['login', 'password'], properties: credentialProperties } },
+      schema: { body: { type: 'object', additionalProperties: false, required: ['email', 'password'], properties: credentialProperties } },
     }, async (request, reply) => {
       auth.limit(`local:${request.ip}`);
       const token = await local.login(request.body, request.cookies[sessionCookieName]);
+      reply.setCookie(sessionCookieName, token, sessionCookie);
+      return auth.identity(token);
+    });
+    app.post<{ Body: LocalMigration }>('/api/auth/local/migrate', {
+      schema: { body: { type: 'object', additionalProperties: false, required: ['email', 'password', 'login'], properties: {
+        ...credentialProperties, login: { type: 'string', minLength: 3, maxLength: 32 },
+      } } },
+    }, async (request, reply) => {
+      auth.limit(`local:${request.ip}`);
+      const token = await local.migrate(request.body, request.cookies[sessionCookieName]);
       reply.setCookie(sessionCookieName, token, sessionCookie);
       return auth.identity(token);
     });

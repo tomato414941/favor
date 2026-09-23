@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sqlite3
 import sys
 import tempfile
 
@@ -17,8 +18,8 @@ def main():
     runtime_errors = []
     tokens = []
     run_id = secrets.token_hex(6)
-    sender_login = f'aoba_{run_id}'
-    receiver_login = f'mio_{run_id}'
+    sender_email = f'aoba_{run_id}@example.test'
+    receiver_email = f'mio_{run_id}@example.test'
     password = secrets.token_urlsafe(24)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -44,10 +45,9 @@ def main():
             for phrase in ['TODO', 'FIXME', '実装予定', '開発者向け', '設計意図', '次の作業']:
                 assert phrase not in body, phrase
 
-        def register(page, login, name):
+        def register(page, email):
             form = page.get_by_role('form', name='アカウント登録')
-            form.get_by_label('表示名', exact=True).fill(name)
-            form.get_by_label('ログインID', exact=True).fill(login)
+            form.get_by_label('メールアドレス', exact=True).fill(email)
             form.get_by_label('パスワード', exact=True).fill(password)
             form.get_by_role('checkbox').check()
             form.get_by_role('button', name='同意して登録する', exact=True).click()
@@ -75,7 +75,7 @@ def main():
             page.goto(base)
             expect(page.get_by_role('heading', name='アカウント', exact=True)).to_be_visible()
             layout(page, 'registration')
-            register(page, sender_login, '青葉')
+            register(page, sender_email)
             expect(page.get_by_role('heading', name='依頼リンクを作成')).to_be_visible()
             cookie_name = '__Host-commission_session' if base.startswith('https://') else 'commission_session'
             session_cookie = next(cookie for cookie in sender.cookies() if cookie['name'] == cookie_name)
@@ -128,8 +128,8 @@ def main():
             receiving.get_by_role('button', name='受諾へ進む', exact=True).click()
             expect(receiving.get_by_role('form', name='アカウント登録')).to_be_visible()
             layout(receiving, 'recipient-registration')
-            register(receiving, receiver_login, '澪')
-            expect(detail).to_contain_text('澪として受け取ります')
+            register(receiving, receiver_email)
+            expect(detail).to_contain_text(f'{receiver_email}として受け取ります')
             detail.get_by_role('checkbox', name=re.compile('依頼のルールを確認し、この内容')).check()
 
             def lose_acceptance(route):
@@ -178,10 +178,29 @@ def main():
             layout(page, 'download')
 
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
+            # Restore an ID-based credential in this invocation's isolated database.
+            test_data = Path(os.environ['COMMISSION_TEST_DATA_DIR'])
+            assert test_data.name.startswith('commission-e2e-data-') and base.startswith('http://127.0.0.1:')
+            legacy_login = f'previous_{run_id}'
+            with sqlite3.connect(test_data / 'commission.sqlite') as database:
+                updated = database.execute('UPDATE local_credentials SET login = ? WHERE login = ?', (legacy_login, receiver_email))
+                assert updated.rowcount == 1
+            receiving.get_by_role('button', name='ログイン', exact=True).click()
+            receiving.get_by_role('button', name='以前のログインIDをお持ちの方', exact=True).click()
+            migration = receiving.get_by_role('form', name='メールアドレスへの切り替え', exact=True)
+            migration.get_by_label('以前のログインID', exact=True).fill(legacy_login)
+            migration.get_by_label('メールアドレス', exact=True).fill(receiver_email.upper())
+            migration.get_by_label('パスワード', exact=True).fill(password)
+            layout(receiving, 'email-migration')
+            migration.get_by_role('button', name='メールアドレスに切り替える', exact=True).click()
+            receiving.get_by_role('navigation').get_by_role('button', name='依頼一覧', exact=True).click()
+            expect(receiving.get_by_role('article', name='依頼の詳細')).to_contain_text('第2版')
+            receiving.get_by_role('button', name='ログアウト', exact=True).click()
             receiving.get_by_role('button', name='ログイン', exact=True).click()
             login_form = receiving.get_by_role('form', name='ログイン', exact=True)
-            login_form.get_by_label('ログインID', exact=True).fill(receiver_login)
+            login_form.get_by_label('メールアドレス', exact=True).fill(receiver_email.upper())
             login_form.get_by_label('パスワード', exact=True).fill(password)
+            layout(receiving, 'email-login')
             login_form.get_by_role('button', name='ログインする').click()
             receiving.get_by_role('navigation').get_by_role('button', name='依頼一覧', exact=True).click()
             expect(receiving.get_by_role('article', name='依頼の詳細')).to_contain_text('第2版')
@@ -220,7 +239,7 @@ def main():
                 assert all(token not in request.headers.get('referer', '') for token in tokens)
                 assert request.url.startswith(base), request.url
             assert not runtime_errors, runtime_errors
-            print('PASS: 登録、秘密リンク作成・再試行・共有、未登録閲覧、受諾の再試行、専用化、納品・再納品・ダウンロード、再ログイン、辞退・再発行・取消、PC・スマホ表示を確認する')
+            print('PASS: メール登録・ログイン・既存アカウント切り替え、秘密リンク作成・再試行・共有、未登録閲覧、受諾の再試行、専用化、納品・再納品・ダウンロード、辞退・再発行・取消、PC・スマホ表示を確認する')
             print(f'Screenshots: {artifacts}')
         except Exception:
             for i, item in enumerate([page, receiving, visiting]):

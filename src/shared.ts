@@ -49,6 +49,7 @@ export interface SocialAccount {
 export interface IdentitySession {
   account: SocialAccount;
   registered: boolean;
+  email?: string;
 }
 export interface AuthOptions {
   mode: 'local' | 'demo' | 'x' | 'disabled';
@@ -56,8 +57,9 @@ export interface AuthOptions {
   invitationLookup: boolean;
   localLogin?: boolean;
 }
-export interface LocalCredentials { login: string; password: string }
-export interface LocalRegistration extends LocalCredentials { name: string; agreeToRules: boolean }
+export interface LocalCredentials { email: string; password: string }
+export interface LocalRegistration extends LocalCredentials { agreeToRules: boolean }
+export interface LocalMigration extends LocalCredentials { login: string }
 export interface InvitationInput {
   recipientHandle: string;
   brief: string;

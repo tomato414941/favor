@@ -30,13 +30,15 @@ export class AuthService {
     });
   }
 
-  createLocal(input: { login: string; name: string; salt: string; passwordHash: string }): string {
+  createLocal(input: { email: string; salt: string; passwordHash: string }): string {
     if (!this.options.allowLocal) throw new DomainError('AUTH_DISABLED', 'アカウントの登録は利用できません。', 403);
     return this.store.transaction(() => {
-      if (this.store.db.prepare('SELECT 1 FROM local_credentials WHERE login = ?').get(input.login)) throw new DomainError('LOGIN_TAKEN', 'このログインIDは登録済みです。別のIDを使うか、ログインしてください。');
+      if (this.store.db.prepare('SELECT 1 FROM local_credentials WHERE login = ?').get(input.email)) throw new DomainError('EMAIL_TAKEN', 'このメールアドレスは登録済みです。ログインしてください。');
       const subject = randomUUID();
-      this.store.db.prepare('INSERT INTO local_credentials VALUES (?, ?, ?, ?)').run(input.login, subject, input.salt, input.passwordHash);
-      this.store.db.prepare("INSERT INTO social_accounts (provider, subject, handle, name) VALUES ('local', ?, ?, ?)").run(subject, input.login, input.name);
+      const handle = `user_${subject.replaceAll('-', '')}`;
+      const name = `ユーザー ${subject.slice(0, 8)}`;
+      this.store.db.prepare('INSERT INTO local_credentials VALUES (?, ?, ?, ?)').run(input.email, subject, input.salt, input.passwordHash);
+      this.store.db.prepare("INSERT INTO social_accounts (provider, subject, handle, name) VALUES ('local', ?, ?, ?)").run(subject, handle, name);
       const token = this.localSession(subject);
       this.registerAccount(token, true);
       return token;
@@ -46,7 +48,7 @@ export class AuthService {
   localSession(subject: string): string {
     if (!this.options.allowLocal) throw new DomainError('AUTH_DISABLED', 'ログインは利用できません。', 403);
     const row = this.store.db.prepare("SELECT * FROM social_accounts WHERE provider = 'local' AND subject = ?").get(subject) as unknown as AccountRow | undefined;
-    if (!row) throw new DomainError('UNAUTHORIZED', 'ログインIDとパスワードを確認してください。', 401);
+    if (!row) throw new DomainError('UNAUTHORIZED', 'メールアドレスとパスワードを確認してください。', 401);
     return this.issueSession(row);
   }
 
@@ -109,7 +111,8 @@ export class AuthService {
 
   identity(token: string | undefined): IdentitySession {
     const { user_id: userId, ...account } = this.account(token);
-    return { account, registered: userId !== null };
+    const login = account.provider === 'local' ? this.store.db.prepare('SELECT login FROM local_credentials WHERE subject = ?').get(account.subject)?.login : null;
+    return { account, registered: userId !== null, ...(typeof login === 'string' && login.includes('@') ? { email: login } : {}) };
   }
   actor(token: string | undefined): string {
     const account = this.account(token);

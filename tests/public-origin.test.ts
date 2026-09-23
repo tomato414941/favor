@@ -10,10 +10,10 @@ const headers = { host: 'commission.example', origin: publicOrigin, 'x-commissio
 test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCookieと送信元の確認を適用する', async () => {
   const store = new Store();
   const app = await buildApp(new CommissionService(store), { localAuth: true, publicOrigin, trustLoopbackProxy: true });
-  const credentials = { login: 'public-recipient', password: 'private-https-test-password' };
+  const credentials = { email: 'public-recipient@example.test', password: 'private-https-test-password' };
   try {
     const registered = await app.inject({ method: 'POST', url: '/api/auth/local/register', headers,
-      payload: { ...credentials, name: '受け取る人', agreeToRules: true } });
+      payload: { ...credentials, agreeToRules: true } });
     assert.equal(registered.statusCode, 200);
     const session = registered.cookies.find((entry) => entry.name === '__Host-commission_session')!;
     assert.equal(session.secure, true);
@@ -22,7 +22,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
     assert.equal(session.path, '/');
     const cookie = `${session.name}=${session.value}`;
     const identity = await app.inject({ url: '/api/auth/identity', headers: { ...headers, cookie } });
-    assert.equal(identity.json().account.handle, credentials.login);
+    assert.equal(identity.json().email, credentials.email);
     assert.equal(identity.headers['cache-control'], 'no-store');
     assert.equal(identity.headers['referrer-policy'], 'no-referrer');
 
@@ -66,7 +66,7 @@ test('同じ端末の認証試行を制限し、信頼するプロキシ経由�
   const attempt = (remoteAddress: string, forwarded: string) => app.inject({
     method: 'POST', url: '/api/auth/local/login', remoteAddress,
     headers: { ...headers, 'x-forwarded-for': forwarded },
-    payload: { login: '_invalid_login', password: 'private-https-test-password' },
+    payload: { email: 'invalid-email', password: 'private-https-test-password' },
   });
   try {
     for (let i = 0; i < 30; i++) assert.equal((await attempt('127.0.0.1', '192.0.2.10')).statusCode, 401);

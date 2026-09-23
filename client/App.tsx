@@ -51,10 +51,10 @@ export function App() {
   if (route.has('link')) return <RequestLinkLanding key={hash} token={route.get('link') ?? ''} options={options} initialError={initialLocation.error} />;
   if (route.has('invite')) return <InvitationLanding key={hash} token={route.get('invite') ?? ''} options={options} initialError={initialLocation.error} />;
   if (options.mode !== 'demo' && !identity?.registered) return <AccountEntry key={identity?.account.subject ?? 'login'} options={options} identity={identity} onChange={changed} initialError={initialLocation.error} />;
-  return <Workspace key={`${attempt}:${route.get('request') ?? 'workspace'}`} initialRequestId={route.get('request')} options={options} onSessionChange={changed} />;
+  return <Workspace key={`${attempt}:${route.get('request') ?? 'workspace'}`} initialRequestId={route.get('request')} options={options} email={identity?.email} onSessionChange={changed} />;
 }
 
-function Workspace({ initialRequestId, options, onSessionChange }: { initialRequestId: string | null; options: AuthOptions; onSessionChange: () => void }) {
+function Workspace({ initialRequestId, options, email, onSessionChange }: { initialRequestId: string | null; options: AuthOptions; email?: string; onSessionChange: () => void }) {
   const [settings, setSettings] = useState<RequestFormSettings | null>(null);
   const [session, setSession] = useState<SessionView | null>(null);
   const [requests, setRequests] = useState<RequestView[]>([]);
@@ -126,7 +126,7 @@ function Workspace({ initialRequestId, options, onSessionChange }: { initialRequ
   return <>
     <div className="demo-banner"><span className="demo-mark">試用版</span>実際の支払いは発生しません</div>
     <header className="header shell"><button className="wordmark" onClick={() => navigate('compose')} aria-label="commission ホーム">commission</button>
-      {session && <><nav aria-label="メインナビゲーション"><button aria-current={page === 'compose' ? 'page' : undefined} onClick={() => navigate('compose')}>依頼を作る</button><button aria-current={page === 'requests' ? 'page' : undefined} onClick={() => navigate('requests')}>依頼一覧</button></nav><div className="account-menu"><span>{session.name}</span><button className="text-button" disabled={busy} onClick={() => void run(async () => { await api('/auth/logout', {}); onSessionChange(); })}>ログアウト</button></div></>}
+      {session && <><nav aria-label="メインナビゲーション"><button aria-current={page === 'compose' ? 'page' : undefined} onClick={() => navigate('compose')}>依頼を作る</button><button aria-current={page === 'requests' ? 'page' : undefined} onClick={() => navigate('requests')}>依頼一覧</button></nav><div className="account-menu"><span title={email ?? session.name}>{email ?? session.name}</span><button className="text-button" disabled={busy} onClick={() => void run(async () => { await api('/auth/logout', {}); onSessionChange(); })}>ログアウト</button></div></>}
     </header>
     <main className="shell">
       {error && <div className="message error" role="alert">{error} <button disabled={busy} onClick={() => session ? void run(refresh) : setAttempt((value) => value + 1)}>再読み込み</button></div>}

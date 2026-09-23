@@ -49,8 +49,8 @@ def main():
                     time.sleep(0.1)
             else:
                 raise AssertionError('Cookie isolation test server did not start')
-            with api('/api/auth/local/register', {'login': 'other_account', 'password': secrets.token_urlsafe(24),
-                                                  'name': '別のテストアカウント', 'agreeToRules': True}) as response:
+            with api('/api/auth/local/register', {'email': 'other@example.test', 'password': secrets.token_urlsafe(24),
+                                                  'agreeToRules': True}) as response:
                 parsed = http.cookies.SimpleCookie()
                 parsed.load(response.headers['Set-Cookie'])
                 cookie_name = next(iter(parsed))
@@ -86,7 +86,7 @@ def main():
                 page = context.new_page()
                 page.goto(origin)
                 page.wait_for_load_state('networkidle')
-                credentials = {'login': 'original_user', 'password': secrets.token_urlsafe(24)}
+                credentials = {'email': 'original@example.test', 'password': secrets.token_urlsafe(24)}
 
                 def post(path, body):
                     return page.evaluate('''async ({path, body}) => {
@@ -95,7 +95,7 @@ def main():
                         return {status: response.status, body: await response.json()};
                     }''', {'path': path, 'body': body})
 
-                registration = post('/api/auth/local/register', {**credentials, 'name': '元のテストアカウント', 'agreeToRules': True})
+                registration = post('/api/auth/local/register', {**credentials, 'agreeToRules': True})
                 assert registration['status'] == 200
                 original_cookie = next(cookie for cookie in context.cookies() if cookie['name'] == cookie_name)
                 page.goto(other_origin)
@@ -109,7 +109,7 @@ def main():
                 page.goto(origin)
                 page.wait_for_load_state('networkidle')
                 identity = page.evaluate("async () => (await fetch('/api/auth/identity')).json()")
-                assert identity['account']['handle'] == credentials['login']
+                assert identity['email'] == credentials['email']
                 created = post('/api/links', {'brief': 'Cookie分離を確認するテスト依頼です。', 'amount': 12000,
                                               'visibility': 'hidden', 'nsfw': False, 'agreeToRules': True})
                 assert created['status'] == 201
@@ -121,7 +121,7 @@ def main():
                 assert page.evaluate("async () => (await fetch('/api/auth/identity')).json()") is None
                 logged_in = post('/api/auth/local/login', credentials)
                 assert logged_in['status'] == 200
-                assert logged_in['body']['account']['handle'] == credentials['login']
+                assert logged_in['body']['email'] == credentials['email']
                 assert not unexpected_origins, unexpected_origins
                 context.close()
                 browser.close()
