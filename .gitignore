@@ -8,6 +8,9 @@ AGENTS.override.md
 
 # Local application data
 data/
+*.sqlite*
+*.db
+*.db-*
 *.log
 node_modules/
 dist/
