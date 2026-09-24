@@ -298,6 +298,9 @@ export function AccountEntry({
               )}
             </>
           )}
+          <p className="hint">
+            <a href="/#works">公開された作品を見る</a>
+          </p>
         </section>
       </main>
       <footer className="footer shell">

@@ -56,6 +56,15 @@ interface FileRow {
   name: string;
   data: Uint8Array;
 }
+const IMAGE_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
+export const imageType = (name: string): string | null =>
+  IMAGE_TYPES[name.toLowerCase().split('.').pop() ?? ''] ?? null;
 export class DomainError extends Error {
   constructor(
     public code: string,
@@ -139,6 +148,11 @@ export class CommissionService {
       acceptBy: row.accept_by,
       deliverBy: row.deliver_by,
       deliveryVersion: row.delivery_version,
+      files: this.store.db
+        .prepare(
+          'SELECT id, name, length(data) AS size FROM files WHERE request_id = ? AND version = ?',
+        )
+        .all(row.id, row.delivery_version) as unknown as WorkView['files'],
     };
   }
   private view(row: RequestRow, actor: string): RequestView {
@@ -148,11 +162,6 @@ export class CommissionService {
       amount: row.amount,
       paymentState: this.payment(row.id).state,
       cancelledReason: row.cancelled_reason,
-      files: this.store.db
-        .prepare(
-          'SELECT id, name, length(data) AS size FROM files WHERE request_id = ? AND version = ?',
-        )
-        .all(row.id, row.delivery_version) as unknown as RequestView['files'],
     };
   }
   get(actor: string, id: string): RequestView {
@@ -179,6 +188,28 @@ export class CommissionService {
       )
       .all() as unknown as RequestRow[];
     return rows.map((row) => this.workView(row));
+  }
+  private publicRow(id: string): RequestRow {
+    const row = this.one<RequestRow>('SELECT * FROM requests WHERE id = ?', id);
+    if (!row || row.state !== 'delivered' || row.visibility === 'hidden')
+      fail('NOT_FOUND', '作品が見つかりません。', 404);
+    return row!;
+  }
+  publicWork(id: string): WorkView {
+    return this.workView(this.publicRow(id));
+  }
+  /** Image files of the latest delivery of a public work. Other files stay with the parties. */
+  publicImage(id: string, fileId: string): FileRow & { type: string } {
+    const row = this.publicRow(id);
+    const file = this.one<FileRow & { version: number }>(
+      'SELECT id, request_id, version, name, data FROM files WHERE id = ? AND request_id = ?',
+      fileId,
+      id,
+    );
+    const type = file && imageType(file.name);
+    if (!file || file.version !== row.delivery_version || !type)
+      fail('NOT_FOUND', 'ファイルが見つかりません。', 404);
+    return { ...file!, type: type! };
   }
   private command(
     actor: string,

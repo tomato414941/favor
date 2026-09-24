@@ -153,19 +153,25 @@ nav {
   align-self: stretch;
   gap: 28px;
 }
-nav button {
+nav button,
+nav a {
   position: relative;
+  display: inline-flex;
+  align-items: center;
   background: none;
   padding: 1px 0 0;
   color: var(--muted);
   font-size: 13px;
   white-space: nowrap;
+  text-decoration: none;
 }
-nav button[aria-current] {
+nav button[aria-current],
+nav a[aria-current] {
   color: var(--ink);
   font-weight: 600;
 }
-nav button[aria-current]::after {
+nav button[aria-current]::after,
+nav a[aria-current]::after {
   content: '';
   position: absolute;
   height: 2px;
@@ -979,15 +985,6 @@ nav .count {
 .request-link-share .action-buttons {
   margin-top: 18px;
 }
-.request-link-warning {
-  padding: 13px 15px;
-  border-left: 2px solid #b89760;
-  background: #faf5eb;
-  color: #765328;
-  font-size: 12px;
-  line-height: 1.85;
-  margin-bottom: 22px;
-}
 .request-link-landing {
   max-width: 680px;
   padding-top: 40px;
@@ -1084,10 +1081,12 @@ nav .count {
   .header nav {
     order: 3;
     width: 100%;
-    gap: 26px;
+    gap: 18px;
     min-height: 48px;
+    overflow-x: auto;
   }
-  nav button {
+  nav button,
+  nav a {
     font-size: 13px;
   }
   .account-menu {
@@ -1243,4 +1242,53 @@ nav .count {
   .primary {
     transition: none;
   }
+}
+
+.works-page {
+  padding-top: 34px;
+}
+.works-page h1 {
+  font-size: 27px;
+  margin-bottom: 22px;
+}
+.works-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 24px;
+}
+.works-list a {
+  display: grid;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 14px;
+  background: #fff;
+}
+.work-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.work-parties,
+.empty-works {
+  color: var(--muted);
+  font-size: 12px;
+}
+.work-brief {
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.work {
+  max-width: 760px;
+  display: grid;
+  gap: 18px;
 }

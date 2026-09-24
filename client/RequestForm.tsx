@@ -24,7 +24,7 @@ export function RequestForm({
 }) {
   const [brief, setBrief] = useState('');
   const [amount, setAmount] = useState(String(terms.recommendedAmount));
-  const [visibility, setVisibility] = useState<Visibility>('hidden');
+  const [visibility, setVisibility] = useState<Visibility>('public');
   const [agreed, setAgreed] = useState(false);
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -84,9 +84,8 @@ export function RequestForm({
           <div className="choice-grid">
             {(
               [
-                ['public', '公開', '依頼者名・依頼文・作品のプレビューを公開'],
-                ['anonymous', '匿名', '依頼文・プレビューを公開。作り手にも名前を知らせない'],
-                ['hidden', '非表示', '依頼文・作品をサービス内で一般公開しない'],
+                ['public', '公開', '依頼文と作品を作品ページに載せ、依頼者名も表示する'],
+                ['hidden', '非表示', '作品ページを作らない'],
               ] as const
             ).map(([value, title, description]) => (
               <label className={`choice ${visibility === value ? 'checked' : ''}`} key={value}>
@@ -106,11 +105,6 @@ export function RequestForm({
             非表示でも、作り手によるSNS等での作品発表は制限しません。秘密保持や権利譲渡を意味しません。
           </p>
         </fieldset>
-        {visibility === 'anonymous' && (
-          <p className="request-link-warning">
-            あなたのSNSからリンクを送ると、相手にアカウントが伝わります。サービス内の匿名表示とは別です。
-          </p>
-        )}
         <p className="payment-note">
           受諾期限は作成から{terms.acceptanceDays}日、納品期限は{terms.deliveryDays}日です。
           支払いはリンク作成時に確保し、相手の受諾時に確定します。

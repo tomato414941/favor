@@ -165,7 +165,7 @@ test('匿名依頼の公開情報と当事者の支払情報を区別して表�
   assert.equal('amount' in view, false);
   assert.equal(view.brief, service.get('demo-client', id).brief);
   assert.equal(service.get('demo-client', id).clientName, '青葉 / aoba');
-  assert.equal('files' in view, false);
+  assert.equal(view.files.length, 1);
 });
 test('依頼内容とファイル名・内容・個数を検証して保存する', () => {
   const { create, service } = setup();

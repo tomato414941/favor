@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AuthOptions, IdentitySession } from '../src/shared';
 import { api } from './api';
 import { AccountEntry, restoreXReturn } from './Auth';
+import { WorkPage, WorksList } from './Works';
 import { RequestLinkLanding } from './RequestLinks';
 import { Workspace } from './Workspace';
 
@@ -58,6 +59,8 @@ export function App() {
         )}
       </main>
     );
+  if (route.has('works')) return <WorksList key={hash} />;
+  if (route.has('work')) return <WorkPage key={hash} id={route.get('work') ?? ''} />;
   if (route.has('link'))
     return (
       <RequestLinkLanding

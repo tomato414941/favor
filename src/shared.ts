@@ -29,13 +29,13 @@ export interface WorkView {
   acceptBy: number;
   deliverBy: number;
   deliveryVersion: number;
+  files: FileView[];
 }
 export interface RequestView extends WorkView {
   viewerRole: Role;
   amount: number;
   cancelledReason: string | null;
   paymentState: PaymentState;
-  files: FileView[];
 }
 export interface SessionView {
   name: string;

@@ -163,10 +163,14 @@ def main():
             ])
             work.get_by_role('button', name='ファイルを納品', exact=True).click()
             expect(work).to_contain_text('納品済み')
-            expect(work.get_by_role('link')).to_have_count(2)
+            expect(work.locator('.delivery-files').get_by_role('link')).to_have_count(2)
             work.get_by_text('ファイルを再納品する', exact=True).click()
             latest = '海辺の喫茶店には、星を待つ席があった。'.encode()
-            work.get_by_label('納品ファイルを選択', exact=True).set_input_files({'name': '完成版.txt', 'mimeType': 'text/plain', 'buffer': latest})
+            png = bytes.fromhex('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f000501020007fa0e9e0000000049454e44ae426082')
+            work.get_by_label('納品ファイルを選択', exact=True).set_input_files([
+                {'name': '完成版.txt', 'mimeType': 'text/plain', 'buffer': latest},
+                {'name': 'イラスト.png', 'mimeType': 'image/png', 'buffer': png},
+            ])
             work.get_by_role('button', name='ファイルを納品', exact=True).click()
             expect(work).to_contain_text('第2版')
             layout(receiving, 'delivered')
@@ -179,6 +183,17 @@ def main():
                 delivered.get_by_role('link', name=re.compile('完成版.txt')).click()
             assert Path(download_info.value.path()).read_bytes() == latest
             layout(page, 'download')
+
+            delivered_id = sender.request.get(f'{base}/api/requests').json()['requests'][0]['id']
+            text_id = next(f['id'] for f in sender.request.get(f'{base}/api/requests/{delivered_id}').json()['files'] if f['name'] == '完成版.txt')
+            visiting.goto(f'{base}/#works')
+            expect(visiting.get_by_role('heading', name='作品', exact=True)).to_be_visible()
+            visiting.get_by_role('link', name=re.compile(brief[:10])).click()
+            shown = visiting.get_by_role('article', name='作品', exact=True)
+            expect(shown).to_contain_text(brief)
+            expect(shown.get_by_role('img', name='イラスト.png')).to_be_visible()
+            assert visiting.request.get(f'{base}/api/works/{delivered_id}/files/{text_id}').status == 404
+            layout(visiting, 'work')
 
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
             layout(receiving, 'email-login')

@@ -63,6 +63,11 @@ export function RequestDetail({
       <p className="detail-parties">
         {request.clientName} <Arrow /> {request.creatorName}
       </p>
+      {request.state === 'delivered' && request.visibility !== 'hidden' && (
+        <p className="hint">
+          <a href={`/#work=${request.id}`}>作品ページを見る</a>
+        </p>
+      )}
       {request.state !== 'cancelled' && (
         <ol className="timeline" aria-label="取引の流れ">
           {['依頼を作成', '受諾・制作', '納品'].map((label, index) => {

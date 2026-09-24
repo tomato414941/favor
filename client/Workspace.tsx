@@ -169,6 +169,7 @@ export function Workspace({
                 受けた依頼
                 <span className="count">{receivedRequests.length}</span>
               </button>
+              <a href="/#works">作品</a>
             </nav>
             <div className="account-menu">
               <span title={email ?? session.name}>{email ?? session.name}</span>

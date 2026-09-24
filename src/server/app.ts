@@ -374,6 +374,21 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   app.get('/api/session', async (request) => service.session(actor(request)));
   app.get('/api/requests', async (request) => ({ requests: service.list(actor(request)) }));
   app.get('/api/works', async () => ({ works: service.publicWorks() }));
+  app.get<{ Params: { id: string } }>('/api/works/:id', async (request) =>
+    service.publicWork(request.params.id),
+  );
+  app.get<{ Params: { id: string; fileId: string } }>(
+    '/api/works/:id/files/:fileId',
+    async (request, reply) => {
+      const file = service.publicImage(request.params.id, request.params.fileId);
+      return reply
+        .header('Content-Disposition', 'inline')
+        .header('Content-Security-Policy', "sandbox; default-src 'none'")
+        .header('Cache-Control', 'private, max-age=300')
+        .type(file.type)
+        .send(Buffer.from(file.data));
+    },
+  );
   app.get<{ Params: { id: string } }>('/api/requests/:id', async (request) =>
     service.get(actor(request), request.params.id),
   );
