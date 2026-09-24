@@ -358,11 +358,6 @@ textarea:focus {
   font-size: 12px;
   line-height: 1.85;
 }
-.amount-row {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
 .amount-input {
   display: flex;
   align-items: center;
@@ -425,28 +420,12 @@ textarea:focus {
 .form-fields > .checkbox-line {
   margin-bottom: 28px;
 }
-.payment-options {
+.payment-note {
   padding-top: 22px;
   border-top: 1px solid var(--line);
-}
-.payment-choices {
-  display: grid;
-  gap: 10px;
-}
-.payment-choices label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-.payment-choices input {
-  margin: 0;
-}
-.payment-subtitle {
-  display: inline;
   color: var(--muted);
-  font-size: 11px;
-  margin-left: 10px;
+  font-size: 12px;
+  line-height: 1.85;
 }
 .agreement,
 .request-link-agreement {
@@ -1308,14 +1287,8 @@ nav .count {
   .field-meta > :last-child {
     margin-left: auto;
   }
-  .amount-row {
-    gap: 14px;
-  }
   .amount-input {
     max-width: 190px;
-  }
-  .amount-row .text-button {
-    white-space: nowrap;
   }
   .request-detail {
     padding: 18px;

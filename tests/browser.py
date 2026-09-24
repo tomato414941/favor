@@ -99,12 +99,12 @@ def main():
                 route.abort('failed')
 
             page.route('**/api/links', lose_creation)
-            page.get_by_role('button', name='支払いを確保してリンク作成', exact=True).click()
+            page.get_by_role('button', name='リンクを作成', exact=True).click()
             expect(page.get_by_role('alert')).to_contain_text('接続を確認できませんでした')
             page.unroute('**/api/links', lose_creation)
             retry_keys = []
             page.on('request', lambda request: retry_keys.append(request.headers.get('idempotency-key')) if request.method == 'POST' and request.url.endswith('/api/links') else None)
-            page.get_by_role('button', name='支払いを確保してリンク作成', exact=True).click()
+            page.get_by_role('button', name='リンクを作成', exact=True).click()
             expect(page.get_by_role('status')).to_contain_text('作成済みの依頼')
             assert retry_keys[0] == failures[0]
             assert len(sender.request.get(f'{base}/api/links').json()['links']) == 1
@@ -188,7 +188,7 @@ def main():
 
             brief2 = '今回は見送りを確認するための依頼です。'
             compose(page, brief2)
-            page.get_by_role('button', name='支払いを確保してリンク作成', exact=True).click()
+            page.get_by_role('button', name='リンクを作成', exact=True).click()
             card2, old_url = created_url(page, brief2)
             page.once('dialog', lambda dialog: dialog.accept())
             card2.get_by_role('button', name='リンクを再発行').click()
@@ -220,7 +220,7 @@ def main():
 
             brief3 = '取り消す依頼です。'
             compose(page, brief3)
-            page.get_by_role('button', name='支払いを確保してリンク作成', exact=True).click()
+            page.get_by_role('button', name='リンクを作成', exact=True).click()
             card3, url3 = created_url(page, brief3)
             page.once('dialog', lambda dialog: dialog.accept())
             card3.get_by_role('button', name='依頼を取り消す', exact=True).click()

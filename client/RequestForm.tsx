@@ -61,29 +61,20 @@ export function RequestForm({
         </div>
         <div className="field">
           <label htmlFor="amount">依頼金額</label>
-          <div className="amount-row">
-            <div className="amount-input">
-              <span aria-hidden="true">¥</span>
-              <input
-                id="amount"
-                type="number"
-                inputMode="numeric"
-                min={terms.minimumAmount}
-                max={limits.maximumAmount}
-                step="1"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                required
-                aria-describedby="amount-hint"
-              />
-            </div>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setAmount(String(terms.recommendedAmount))}
-            >
-              推奨額にする
-            </button>
+          <div className="amount-input">
+            <span aria-hidden="true">¥</span>
+            <input
+              id="amount"
+              type="number"
+              inputMode="numeric"
+              min={terms.minimumAmount}
+              max={limits.maximumAmount}
+              step="1"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              required
+              aria-describedby="amount-hint"
+            />
           </div>
           <p className="hint" id="amount-hint">
             最低 {yen(terms.minimumAmount)} · 金額は第三者には公開されません。
@@ -129,20 +120,7 @@ export function RequestForm({
           />
           <span>成人向けなど、閲覧に注意が必要な内容を含む</span>
         </label>
-        <fieldset className="field payment-options">
-          <legend>支払方法</legend>
-          <div className="payment-choices">
-            <label className="checked">
-              <input type="radio" name="payment" checked readOnly />
-              <span>
-                カード<span className="payment-subtitle">体験用</span>
-              </span>
-            </label>
-          </div>
-          <p className="hint">
-            リンク作成時に利用枠を確保し、相手の受諾時に請求が確定します。体験用のため、カード情報の入力や実際の請求はありません。
-          </p>
-        </fieldset>
+        <p className="payment-note">支払いはリンク作成時に確保し、相手の受諾時に確定します。</p>
         <div className="agreement">
           <label className="checkbox-line">
             <input
@@ -161,7 +139,7 @@ export function RequestForm({
         </div>
         <div className="submit-row">
           <button className="primary" type="submit" disabled={busy}>
-            {busy ? '処理しています…' : '支払いを確保してリンク作成'}
+            {busy ? '処理しています…' : 'リンクを作成'}
             <Arrow />
           </button>
         </div>
