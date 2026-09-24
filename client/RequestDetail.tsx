@@ -21,7 +21,7 @@ const reasons: Record<string, string> = {
   withdrawn: '依頼を取り消しました。',
   declined: '作り手が依頼を見送りました。',
   give_up: '作り手が制作を終了しました。',
-  acceptance_expired: '承認期限または支払確保の期限を過ぎました。',
+  acceptance_expired: '受諾期限を過ぎました。',
   delivery_expired: '納品期限を過ぎました。',
   payment_expired: '支払いの確認期限を過ぎました。',
 };
@@ -65,7 +65,7 @@ export function RequestDetail({
       </p>
       {request.state !== 'cancelled' && (
         <ol className="timeline" aria-label="取引の流れ">
-          {['依頼を送信', '承認・制作', '納品'].map((label, index) => {
+          {['依頼を作成', '受諾・制作', '納品'].map((label, index) => {
             const step = request.state === 'delivered' ? 2 : request.state === 'accepted' ? 1 : 0;
             return (
               <li
@@ -96,11 +96,11 @@ export function RequestDetail({
           <dd>{visibilityLabels[request.visibility]}</dd>
         </div>
         <div>
-          <dt>送信日時</dt>
+          <dt>作成日時</dt>
           <dd>{date(request.createdAt)}</dd>
         </div>
         <div>
-          <dt>承認期限</dt>
+          <dt>受諾期限</dt>
           <dd>{date(request.acceptBy)}</dd>
         </div>
         <div>

@@ -53,7 +53,7 @@ export function RequestForm({
             aria-describedby="brief-hint brief-count"
           />
           <div className="field-meta">
-            <span id="brief-hint">送信後の打ち合わせやリテイク要求はできません。</span>
+            <span id="brief-hint">作成後の打ち合わせやリテイク要求はできません。</span>
             <span id="brief-count">
               {number.format(brief.length)} / {number.format(limits.brief)}
             </span>
