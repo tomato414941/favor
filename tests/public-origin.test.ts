@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp } from '../src/server/app.js';
-import { FavorService } from '../src/server/service.js';
+import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { Mailbox } from './mailbox.js';
 
@@ -11,7 +11,7 @@ const headers = { host: 'favor.example', origin: publicOrigin, 'x-favor-action':
 test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCookieと送信元の確認を適用する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new FavorService(store), {
+  const app = await buildApp(new RequestService(store), {
     emailDelivery: mailbox.deliver,
     publicOrigin,
     trustLoopbackProxy: true,
@@ -100,7 +100,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
 test('公開URLにHTTPSを要求し、固定アカウントの体験モードをループバックに限定する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const service = new FavorService(store);
+  const service = new RequestService(store);
   try {
     for (const value of [
       'invalid',
@@ -133,7 +133,7 @@ test('公開URLにHTTPSを要求し、固定アカウントの体験モードを
 test('同じ端末の認証試行を制限し、信頼するプロキシ経由の別端末には試行を許可する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new FavorService(store), {
+  const app = await buildApp(new RequestService(store), {
     emailDelivery: mailbox.deliver,
     publicOrigin,
     trustLoopbackProxy: true,

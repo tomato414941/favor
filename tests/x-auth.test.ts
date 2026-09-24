@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { AuthService, hashToken, newToken } from '../src/server/auth.js';
 import { buildApp } from '../src/server/app.js';
-import { FavorService, DomainError } from '../src/server/service.js';
+import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { XAuth, XProvider, X_SCOPES, type XConfig, type XFetch } from '../src/server/x-auth.js';
 
@@ -205,7 +205,7 @@ test('Xで登録したアカウントをユーザー名変更後も認証する'
     assert.equal(s.auth.actor(nextSession), user);
     assert.equal(s.auth.identity(nextSession).account.handle, 'renamed_user');
     assert.equal(s.store.db.prepare('SELECT COUNT(*) AS total FROM users').get()!.total, 1);
-    assert.equal(new FavorService(s.store).session(user).name, '新しい名前');
+    assert.equal(new RequestService(s.store).session(user).name, '新しい名前');
     assert.throws(
       () => new AuthService(s.store, s.auth.clock).identity(nextSession),
       codeIs('UNAUTHORIZED'),
@@ -340,7 +340,7 @@ test('Xの応答を検証して認証エラーを利用者向けに表示する'
 test('HTTPでXログインから依頼リンクの受諾と再試行まで実行する', async () => {
   const store = new Store();
   const fixture = providerFixture();
-  const app = await buildApp(new FavorService(store), { xProvider: fixture.provider });
+  const app = await buildApp(new RequestService(store), { xProvider: fixture.provider });
   const headers = {
     host: 'favor.example',
     origin: config.publicOrigin,
@@ -579,7 +579,8 @@ test('X認証の有効設定と保存した試行回数に基づいてログイ�
       codeIs('AUTH_DISABLED'),
     );
     await assert.rejects(
-      () => buildApp(new FavorService(s.store), { demoAuth: true, xProvider: s.fixture.provider }),
+      () =>
+        buildApp(new RequestService(s.store), { demoAuth: true, xProvider: s.fixture.provider }),
       /cannot be enabled together/,
     );
   } finally {

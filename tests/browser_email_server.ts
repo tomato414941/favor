@@ -2,15 +2,15 @@
 import { join } from 'node:path';
 import { buildApp } from '../src/server/app.js';
 import { fileDelivery } from '../src/server/email-delivery.js';
-import { FavorService } from '../src/server/service.js';
+import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 
 const directory = process.env.FAVOR_DATA_DIR;
 const port = Number(process.env.FAVOR_PORT);
 if (!directory || !Number.isInteger(port) || port < 1024 || port > 65535)
   throw new Error('An isolated directory and port are required.');
-const store = new Store(join(directory, 'favor.sqlite'));
-const app = await buildApp(new FavorService(store), {
+const store = new Store(join(directory, 'app.sqlite'));
+const app = await buildApp(new RequestService(store), {
   emailDelivery: fileDelivery(join(directory, 'mail')),
   publicOrigin: process.env.FAVOR_PUBLIC_ORIGIN,
 });

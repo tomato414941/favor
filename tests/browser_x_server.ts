@@ -1,7 +1,7 @@
 /** Isolated browser-test fixture. Never imported by the application entrypoint. */
 import { join } from 'node:path';
 import { buildApp } from '../src/server/app.js';
-import { FavorService } from '../src/server/service.js';
+import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { XProvider, X_SCOPES } from '../src/server/x-auth.js';
 
@@ -40,8 +40,8 @@ const provider = new XProvider(
     return Response.json({ errors: [] }, { status: 404 });
   },
 );
-const store = new Store(join(directory, 'favor.sqlite'));
-const app = await buildApp(new FavorService(store), { xProvider: provider });
+const store = new Store(join(directory, 'app.sqlite'));
+const app = await buildApp(new RequestService(store), { xProvider: provider });
 let closing = false;
 async function close() {
   if (closing) return;

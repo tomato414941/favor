@@ -5,7 +5,7 @@ import type { Visibility } from '../src/shared.js';
 import { buildApp } from '../src/server/app.js';
 import { AuthService } from '../src/server/auth.js';
 import { RequestLinkService } from '../src/server/request-links.js';
-import { FavorService, DomainError } from '../src/server/service.js';
+import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 
 const notFound = (error: unknown) => error instanceof DomainError && error.code === 'NOT_FOUND';
@@ -17,7 +17,7 @@ const files = (image: string) => [
 
 test('公開設定の納品済み依頼を作品として公開し、最新版の画像だけをログインなしで配信する', async () => {
   const store = new Store();
-  const service = new FavorService(store);
+  const service = new RequestService(store);
   const auth = new AuthService(store, Date.now, { allowDemo: true });
   auth.demoLogin('client');
   const recipient = auth.identity(auth.demoLogin('creator')).account;

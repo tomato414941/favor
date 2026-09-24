@@ -4,7 +4,7 @@ import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { RequestLinkInput, UploadInput } from '../shared.js';
-import { FavorService, DomainError } from './service.js';
+import { RequestService, DomainError } from './service.js';
 import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { RequestLinkService } from './request-links.js';
 import { XAuth, XProvider } from './x-auth.js';
@@ -22,7 +22,7 @@ interface AppOptions {
   trustLoopbackProxy?: boolean;
 }
 
-export async function buildApp(service: FavorService, options: AppOptions = {}) {
+export async function buildApp(service: RequestService, options: AppOptions = {}) {
   if (options.demoAuth && options.xProvider)
     throw new Error('Demo and X authentication cannot be enabled together.');
   const configuredOrigin = options.publicOrigin ?? options.xProvider?.publicOrigin;

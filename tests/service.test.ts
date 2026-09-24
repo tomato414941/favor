@@ -2,7 +2,7 @@ import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { RequestLinkInput } from '../src/shared.js';
-import { FavorService, DomainError } from '../src/server/service.js';
+import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
 import { RequestLinkService } from '../src/server/request-links.js';
@@ -11,11 +11,11 @@ const stores: Store[] = [];
 afterEach(() => {
   stores.splice(0).forEach((store) => store.close());
 });
-function setup(options: ConstructorParameters<typeof FavorService>[3] = {}) {
+function setup(options: ConstructorParameters<typeof RequestService>[3] = {}) {
   let now = 1_000_000;
   const store = new Store();
   stores.push(store);
-  const service = new FavorService(
+  const service = new RequestService(
     store,
     () => now,
     { acceptanceMs: 1000, authorizationMs: 1000, deliveryMs: 10000 },

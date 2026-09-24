@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
 import { Mailbox } from './mailbox.js';
-import { FavorService, DomainError } from '../src/server/service.js';
+import { RequestService, DomainError } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { buildApp } from '../src/server/app.js';
 import type { RequestLinkInput } from '../src/shared.js';
@@ -21,11 +21,11 @@ const input: RequestLinkInput = {
 };
 const errorCode = (code: string) => (error: unknown) =>
   error instanceof DomainError && error.code === code;
-function setup(mock: ConstructorParameters<typeof FavorService>[3] = {}) {
+function setup(mock: ConstructorParameters<typeof RequestService>[3] = {}) {
   let now = 1_800_000_000_000;
   const store = new Store();
   const clock = () => now;
-  const service = new FavorService(store, clock, {}, mock);
+  const service = new RequestService(store, clock, {}, mock);
   const auth = new AuthService(store, clock, { allowDemo: true, allowEmail: true });
   const links = new RequestLinkService(service, auth);
   auth.demoLogin('client');
@@ -249,7 +249,7 @@ test('宛先未指定の依頼にも作成件数の制限を適用する', () =>
 test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を確認する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new FavorService(store), { emailDelivery: mailbox.deliver });
+  const app = await buildApp(new RequestService(store), { emailDelivery: mailbox.deliver });
   const headers = { 'x-favor-action': '1' };
   const register = async (name: string) => {
     const email = `${name}@example.test`;

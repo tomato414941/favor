@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { buildApp } from './app.js';
-import { FavorService } from './service.js';
+import { RequestService } from './service.js';
 import { Store } from './store.js';
 import { XProvider } from './x-auth.js';
 import { fileDelivery, resendDelivery, testDomainDelivery } from './email-delivery.js';
@@ -52,8 +52,8 @@ const providerDelivery =
 const emailDelivery = testMailDomain
   ? testDomainDelivery(testMailDomain, fileDelivery(resolve(directory, 'mail')), providerDelivery)
   : providerDelivery;
-const store = new Store(resolve(directory, 'favor.sqlite'));
-const service = new FavorService(store);
+const store = new Store(resolve(directory, 'app.sqlite'));
+const service = new RequestService(store);
 const app = await buildApp(service, {
   logger: true,
   demoAuth: authMode === 'demo',

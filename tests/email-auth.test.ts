@@ -6,7 +6,7 @@ import { EmailAuth } from '../src/server/email-auth.js';
 import { Mailbox } from './mailbox.js';
 import { buildApp } from '../src/server/app.js';
 import { DomainError } from '../src/server/service.js';
-import { FavorService } from '../src/server/service.js';
+import { RequestService } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { Store } from '../src/server/store.js';
 
@@ -18,7 +18,7 @@ const input = {
 };
 test('メールアドレスを本人だけに表示し、依頼相手と公開作品には公開用の名前を表示する', async () => {
   const store = new Store();
-  const service = new FavorService(store);
+  const service = new RequestService(store);
   const auth = new AuthService(store, Date.now, { allowEmail: true });
   const mailbox = new Mailbox();
   const links = new RequestLinkService(service, auth);
@@ -186,7 +186,7 @@ test('メールアドレスの形式を確認してから送信する', async ()
 
 test('確認コードを要求したブラウザでのみログインし、メール受信前の操作を拒否する', async () => {
   const s = setupEmail();
-  const app = await buildApp(new FavorService(s.store), { emailDelivery: s.mailbox.deliver });
+  const app = await buildApp(new RequestService(s.store), { emailDelivery: s.mailbox.deliver });
   const headers = { 'x-favor-action': '1' };
   try {
     const started = await app.inject({
@@ -233,7 +233,7 @@ test('確認コードを要求したブラウザでのみログインし、メ�
 
 test('ログアウトすると進行中のメール確認を終了する', async () => {
   const s = setupEmail();
-  const app = await buildApp(new FavorService(s.store), { emailDelivery: s.mailbox.deliver });
+  const app = await buildApp(new RequestService(s.store), { emailDelivery: s.mailbox.deliver });
   const headers = { 'x-favor-action': '1' };
   try {
     const start = await app.inject({

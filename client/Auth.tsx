@@ -3,7 +3,7 @@ import type { AuthOptions, IdentitySession } from '../src/shared';
 import { api } from './api';
 import { Arrow, Link } from './ui';
 
-const returnKey = 'favor.x-return';
+const returnKey = 'x-login-return';
 const validReturn = (value: string) =>
   /^(?:\/link#[A-Za-z0-9_-]{43}|\/requests\/[A-Za-z0-9-]{1,100})$/.test(value) ? value : '';
 

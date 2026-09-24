@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createServer, type ProxyOptions } from 'vite';
 import viteConfig from '../vite.config.js';
 import { buildApp } from '../src/server/app.js';
-import { FavorService } from '../src/server/service.js';
+import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { XProvider, X_SCOPES } from '../src/server/x-auth.js';
 
@@ -39,7 +39,7 @@ test('development proxy preserves the browser host, OAuth callback and CSRF orig
       });
     },
   );
-  const app = await buildApp(new FavorService(store), { xProvider: provider });
+  const app = await buildApp(new RequestService(store), { xProvider: provider });
   let web: Awaited<ReturnType<typeof createServer>> | undefined;
   try {
     const apiOrigin = await app.listen({ port: 0, host: '127.0.0.1' });

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AuthService } from '../src/server/auth.js';
 import { RequestLinkService } from '../src/server/request-links.js';
-import { FavorService } from '../src/server/service.js';
+import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 
 test('再起動後も依頼・ファイル・操作の再試行・ログイン状態を維持する', () => {
@@ -15,11 +15,11 @@ test('再起動後も依頼・ファイル・操作の再試行・ログイン�
   let store = new Store(path);
   const services = () => {
     const auth = new AuthService(store, Date.now, { allowDemo: true });
-    const favors = new FavorService(store);
-    return { auth, favors, links: new RequestLinkService(favors, auth) };
+    const requests = new RequestService(store);
+    return { auth, requests, links: new RequestLinkService(requests, auth) };
   };
   try {
-    let { auth, favors, links } = services();
+    let { auth, requests, links } = services();
     const sender = auth.actor(auth.demoLogin('client'));
     const session = auth.demoLogin('recipient');
     const recipient = auth.identity(session).account;
@@ -38,19 +38,19 @@ test('再起動後も依頼・ファイル・操作の再試行・ログイン�
     const files = [
       { name: '作品.txt', content: Buffer.from('明け方の静けさ。').toString('base64') },
     ];
-    const delivered = favors.deliver(actor, accepted.requestId!, deliverKey, files);
+    const delivered = requests.deliver(actor, accepted.requestId!, deliverKey, files);
     store.close();
     store = new Store(path);
-    ({ auth, favors, links } = services());
+    ({ auth, requests, links } = services());
     assert.equal(auth.actor(session), actor);
     assert.equal(links.create(sender, createKey, input).link.id, created.link.id);
     assert.equal(
       links.accept(recipient, created.token!, acceptKey, true).requestId,
       accepted.requestId,
     );
-    assert.deepEqual(favors.deliver(actor, accepted.requestId!, deliverKey, files), delivered);
+    assert.deepEqual(requests.deliver(actor, accepted.requestId!, deliverKey, files), delivered);
     assert.equal(
-      Buffer.from(favors.download(sender, delivered.id, delivered.files[0]!.id).data).toString(),
+      Buffer.from(requests.download(sender, delivered.id, delivered.files[0]!.id).data).toString(),
       '明け方の静けさ。',
     );
     assert.equal(links.read(created.token!, recipient).paymentState, 'captured');

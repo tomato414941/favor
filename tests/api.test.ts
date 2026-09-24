@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { buildApp } from '../src/server/app.js';
-import { FavorService } from '../src/server/service.js';
+import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 
 test('HTTPでセッションと送信元を確認し、依頼リンクの入力を検証する', async () => {
   const store = new Store();
-  const service = new FavorService(store);
+  const service = new RequestService(store);
   const app = await buildApp(service, { demoAuth: true });
   try {
     assert.equal((await app.inject('/api/demo/session')).json(), null);
