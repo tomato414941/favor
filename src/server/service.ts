@@ -421,11 +421,14 @@ export class CommissionService {
       return id;
     });
   }
-  download(actor: string, fileId: string): FileRow {
+  download(actor: string, requestId: string, fileId: string): FileRow {
     this.user(actor);
     const file =
-      this.one<FileRow>('SELECT id, request_id, name, data FROM files WHERE id = ?', fileId) ??
-      fail('NOT_FOUND', 'ファイルが見つかりません。', 404);
+      this.one<FileRow>(
+        'SELECT id, request_id, name, data FROM files WHERE id = ? AND request_id = ?',
+        fileId,
+        requestId,
+      ) ?? fail('NOT_FOUND', 'ファイルが見つかりません。', 404);
     this.participant(actor, this.row(file.request_id));
     return file;
   }

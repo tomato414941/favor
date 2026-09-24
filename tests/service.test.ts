@@ -69,7 +69,9 @@ test('受諾した依頼を納品し、依頼者がダウンロードする', ()
   const delivered = service.deliver('demo-creator', request.id, randomUUID(), file);
   assert.equal(delivered.state, 'delivered');
   assert.equal(
-    Buffer.from(service.download('demo-client', delivered.files[0]!.id).data).toString(),
+    Buffer.from(
+      service.download('demo-client', request.id, delivered.files[0]!.id).data,
+    ).toString(),
     '波音の聞こえる喫茶店で。',
   );
   assert.equal(effects(request.id, 'capture'), 1);
@@ -151,7 +153,7 @@ test('当事者と役割を確認して依頼の閲覧・納品・取得を許�
   throwsCode(() => service.deliver('demo-client', id, randomUUID(), file), 'FORBIDDEN');
 
   const delivery = service.deliver('demo-creator', id, randomUUID(), file);
-  throwsCode(() => service.download(stranger, delivery.files[0]!.id), 'NOT_FOUND');
+  throwsCode(() => service.download(stranger, id, delivery.files[0]!.id), 'NOT_FOUND');
   assert.equal(service.publicWorks().length, 0);
 });
 test('匿名依頼の公開情報と当事者の支払情報を区別して表示する', () => {

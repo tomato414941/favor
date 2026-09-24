@@ -77,7 +77,7 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
     assert.equal(served.rawPayload.toString('base64'), png);
     assert.equal((await app.inject(`/api/works/${hidden}`)).statusCode, 404);
     assert.equal((await app.inject(`/api/works/${shown}/files/${text.id}`)).statusCode, 404);
-    assert.equal((await app.inject(`/api/files/${latest.id}`)).statusCode, 401);
+    assert.equal((await app.inject(`/api/requests/${shown}/files/${latest.id}`)).statusCode, 401);
   } finally {
     await app.close();
     store.close();

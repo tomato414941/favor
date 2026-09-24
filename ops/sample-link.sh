@@ -52,4 +52,4 @@ else
 fi
 token=$(printf '%s' "$result" | jq -r '.token // empty')
 [ -n "$token" ] || { echo "The link was not returned. Try again in a moment." >&2; exit 1; }
-echo "$origin/#link=$token"
+echo "$origin/link#$token"

@@ -50,7 +50,9 @@ test('再起動後も依頼・ファイル・操作の再試行・ログイン�
     );
     assert.deepEqual(commissions.deliver(actor, accepted.requestId!, deliverKey, files), delivered);
     assert.equal(
-      Buffer.from(commissions.download(sender, delivered.files[0]!.id).data).toString(),
+      Buffer.from(
+        commissions.download(sender, delivered.id, delivered.files[0]!.id).data,
+      ).toString(),
       '明け方の静けさ。',
     );
     assert.equal(links.read(created.token!, recipient).paymentState, 'captured');

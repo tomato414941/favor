@@ -7,7 +7,7 @@ import {
   type UploadInput,
 } from '../src/shared';
 import { encodeFile } from './api';
-import { Arrow } from './ui';
+import { Arrow, Link } from './ui';
 import { date, number, visibilityLabels, yen } from './format';
 
 interface Limits {
@@ -65,7 +65,7 @@ export function RequestDetail({
       </p>
       {request.state === 'delivered' && request.visibility !== 'hidden' && (
         <p className="hint">
-          <a href={`/#work=${request.id}`}>作品ページを見る</a>
+          <Link href={`/works/${request.id}`}>作品ページを見る</Link>
         </p>
       )}
       {request.state !== 'cancelled' && (
@@ -137,7 +137,11 @@ export function RequestDetail({
             届いたファイル <span>第{request.deliveryVersion}版</span>
           </h3>
           {request.files.map((file) => (
-            <a key={file.id} href={`/api/files/${file.id}`} download={file.name}>
+            <a
+              key={file.id}
+              href={`/api/requests/${request.id}/files/${file.id}`}
+              download={file.name}
+            >
               <span>
                 <strong>{file.name}</strong>
                 <small>{number.format(Math.max(1, Math.ceil(file.size / 1024)))} KB</small>

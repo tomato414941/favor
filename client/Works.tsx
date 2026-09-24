@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { WorkView } from '../src/shared';
 import { api } from './api';
 import { date } from './format';
+import { Link } from './ui';
 
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp)$/i.test(name);
 
@@ -9,13 +10,13 @@ function Frame({ children }: { children: React.ReactNode }) {
   return (
     <>
       <header className="header shell">
-        <a className="wordmark" href="/">
+        <Link className="wordmark" href="/">
           commission
-        </a>
+        </Link>
         <nav aria-label="メインナビゲーション">
-          <a href="/#works" aria-current="page">
+          <Link href="/works" aria-current="page">
             作品
-          </a>
+          </Link>
         </nav>
       </header>
       <main className="shell works-page">{children}</main>
@@ -83,13 +84,13 @@ export function WorksList() {
         <ul className="works-list">
           {data.map((work) => (
             <li key={work.id}>
-              <a href={`/#work=${work.id}`}>
+              <Link href={`/works/${work.id}`}>
                 <WorkImages work={work} />
                 <span className="work-parties">
                   {work.clientName} → {work.creatorName}
                 </span>
                 <span className="work-brief">{work.brief}</span>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>
@@ -121,7 +122,7 @@ export function WorkPage({ id }: { id: string }) {
             納品 第{work.deliveryVersion}版 · 依頼 {date(work.createdAt)}
           </p>
           <p>
-            <a href="/#works">作品一覧へ</a>
+            <Link href="/works">作品一覧へ</Link>
           </p>
         </article>
       )}

@@ -95,7 +95,7 @@ def main():
             page.get_by_role("button", name="リンクを作成", exact=True).click()
             card = page.get_by_role("article", name="依頼リンク", exact=True)
             link = card.get_by_label("依頼リンク", exact=True).input_value()
-            private_tokens.append(link.split("#link=")[1])
+            private_tokens.append(link.split("link#")[1])
             layout(page, "x-request-link")
 
             receiving = recipient.new_page()

@@ -337,9 +337,11 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   app.post<{ Params: { id: string } }>('/api/links/:id/withdraw', async (request) =>
     links.withdraw(actor(request), request.params.id, key(request)),
   );
-  app.get('/api/link', async (request) => links.read(linkToken(request), optionalAccount(request)));
+  app.get('/api/links/by-token', async (request) =>
+    links.read(linkToken(request), optionalAccount(request)),
+  );
   app.post<{ Body: { agreeToRules: boolean } }>(
-    '/api/link/accept',
+    '/api/links/by-token/accept',
     {
       schema: {
         body: {
@@ -358,7 +360,9 @@ export async function buildApp(service: CommissionService, options: AppOptions =
         request.body.agreeToRules,
       ),
   );
-  app.post('/api/link/decline', async (request) => links.decline(linkToken(request), key(request)));
+  app.post('/api/links/by-token/decline', async (request) =>
+    links.decline(linkToken(request), key(request)),
+  );
   const expirationTimer = setInterval(() => {
     try {
       links.expire();
@@ -425,24 +429,33 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     async (request) =>
       service.deliver(actor(request), request.params.id, key(request), request.body.files),
   );
-  app.get<{ Params: { id: string } }>('/api/files/:id', async (request, reply) => {
-    const file = service.download(actor(request), request.params.id);
-    const encodedName = encodeURIComponent(file.name).replace(
-      /['()*]/g,
-      (s) => `%${s.charCodeAt(0).toString(16)}`,
-    );
-    return reply
-      .header(
-        'Content-Disposition',
-        `attachment; filename="download"; filename*=UTF-8''${encodedName}`,
-      )
-      .header('Content-Security-Policy', "sandbox; default-src 'none'")
-      .type('application/octet-stream')
-      .send(Buffer.from(file.data));
-  });
+  app.get<{ Params: { id: string; fileId: string } }>(
+    '/api/requests/:id/files/:fileId',
+    async (request, reply) => {
+      const file = service.download(actor(request), request.params.id, request.params.fileId);
+      const encodedName = encodeURIComponent(file.name).replace(
+        /['()*]/g,
+        (s) => `%${s.charCodeAt(0).toString(16)}`,
+      );
+      return reply
+        .header(
+          'Content-Disposition',
+          `attachment; filename="download"; filename*=UTF-8''${encodedName}`,
+        )
+        .header('Content-Security-Policy', "sandbox; default-src 'none'")
+        .type('application/octet-stream')
+        .send(Buffer.from(file.data));
+    },
+  );
   const root = options.staticRoot ?? resolve('dist/client');
   if (existsSync(resolve(root, 'index.html'))) {
     await app.register(staticFiles, { root, index: ['index.html'], dotfiles: 'deny' });
+    // Application pages live at their own paths; the browser decides what to show.
+    app.setNotFoundHandler(async (request, reply) => {
+      if (!['GET', 'HEAD'].includes(request.method) || request.url.startsWith('/api/'))
+        return reply.code(404).send({ message: 'ページが見つかりません。' });
+      return reply.header('Cache-Control', 'no-store').sendFile('index.html');
+    });
   }
   return app;
 }

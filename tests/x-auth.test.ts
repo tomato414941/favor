@@ -481,12 +481,12 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     fixture.failure(null);
     const linkHeaders = { ...headers, 'x-commission-link': token, 'idempotency-key': randomUUID() };
     assert.equal(
-      (await app.inject({ url: '/api/link', headers: linkHeaders })).json().brief,
+      (await app.inject({ url: '/api/links/by-token', headers: linkHeaders })).json().brief,
       input.brief,
     );
     const recipient = await login('recipient');
     const recipientHeaders = { ...linkHeaders, cookie: recipient.cookie };
-    const read = await app.inject({ url: '/api/link', headers: recipientHeaders });
+    const read = await app.inject({ url: '/api/links/by-token', headers: recipientHeaders });
     assert.equal(read.statusCode, 200);
     assert.equal(read.json().clientName, '匿名の依頼者');
     assert.equal(
@@ -496,7 +496,7 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     );
     const accepted = await app.inject({
       method: 'POST',
-      url: '/api/link/accept',
+      url: '/api/links/by-token/accept',
       headers: recipientHeaders,
       payload: { agreeToRules: true },
     });
@@ -509,15 +509,19 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     );
     const stranger = await login('other');
     assert.equal(
-      (await app.inject({ url: '/api/link', headers: { ...linkHeaders, cookie: stranger.cookie } }))
-        .statusCode,
+      (
+        await app.inject({
+          url: '/api/links/by-token',
+          headers: { ...linkHeaders, cookie: stranger.cookie },
+        })
+      ).statusCode,
       404,
     );
     assert.equal(
       (
         await app.inject({
           method: 'POST',
-          url: '/api/link/accept',
+          url: '/api/links/by-token/accept',
           headers: recipientHeaders,
           payload: { agreeToRules: true },
         })
@@ -545,7 +549,7 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
       null,
     );
     assert.equal(
-      (await app.inject({ url: '/api/link', headers: recipientHeaders })).statusCode,
+      (await app.inject({ url: '/api/links/by-token', headers: recipientHeaders })).statusCode,
       404,
     );
   } finally {

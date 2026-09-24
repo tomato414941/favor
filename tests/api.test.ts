@@ -80,17 +80,20 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
     const proof = { 'x-commission-link': token };
     for (const method of ['GET', 'HEAD'] as const) {
       assert.equal(
-        (await app.inject({ method, url: '/api/link', headers: proof })).statusCode,
+        (await app.inject({ method, url: '/api/links/by-token', headers: proof })).statusCode,
         200,
       );
     }
-    assert.equal((await app.inject({ url: '/api/link', headers: proof })).json().state, 'pending');
+    assert.equal(
+      (await app.inject({ url: '/api/links/by-token', headers: proof })).json().state,
+      'pending',
+    );
     const key = randomUUID();
     const declines = await Promise.all(
       [1, 2].map(() =>
         app.inject({
           method: 'POST',
-          url: '/api/link/decline',
+          url: '/api/links/by-token/decline',
           payload: {},
           headers: { ...headers, ...proof, 'idempotency-key': key },
         }),

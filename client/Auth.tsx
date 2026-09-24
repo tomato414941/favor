@@ -1,18 +1,18 @@
 import { useRef, useState } from 'react';
 import type { AuthOptions, IdentitySession } from '../src/shared';
 import { api } from './api';
-import { Arrow } from './ui';
+import { Arrow, Link } from './ui';
 
 const returnKey = 'commission.x-return';
-const validReturn = (hash: string) =>
-  /^(?:#link=[A-Za-z0-9_-]{43}|#request=[A-Za-z0-9_-]{1,100})$/.test(hash) ? hash : '';
+const validReturn = (value: string) =>
+  /^(?:\/link#[A-Za-z0-9_-]{43}|\/requests\/[A-Za-z0-9-]{1,100})$/.test(value) ? value : '';
 
-export async function beginXLogin(returnTo = window.location.hash) {
+export async function beginXLogin(returnTo = `${window.location.pathname}${window.location.hash}`) {
   try {
     // Check storage before leaving. Private link tokens never enter the OAuth state or a server URL.
     sessionStorage.setItem(
       returnKey,
-      JSON.stringify({ hash: validReturn(returnTo), at: Date.now() }),
+      JSON.stringify({ location: validReturn(returnTo), at: Date.now() }),
     );
   } catch {
     throw new Error(
@@ -27,7 +27,7 @@ export async function beginXLogin(returnTo = window.location.hash) {
     sessionStorage.setItem(
       returnKey,
       JSON.stringify({
-        hash: validReturn(returnTo),
+        location: validReturn(returnTo),
         at: Date.now(),
         state: target.searchParams.get('state'),
       }),
@@ -39,11 +39,12 @@ export async function beginXLogin(returnTo = window.location.hash) {
   }
 }
 
-export function restoreXReturn(): { hash: string; error: string } {
+export function restoreXReturn(): { location: string; error: string } {
   const current = new URLSearchParams(window.location.hash.slice(1));
   const outcome = current.get('auth');
-  if (!outcome) return { hash: window.location.hash, error: '' };
-  let hash = '';
+  if (!outcome)
+    return { location: `${window.location.pathname}${window.location.hash}`, error: '' };
+  let location = '/';
   try {
     const saved = JSON.parse(sessionStorage.getItem(returnKey) ?? 'null');
     if (saved && saved.state === current.get('flow')) {
@@ -51,9 +52,9 @@ export function restoreXReturn(): { hash: string; error: string } {
       if (
         typeof saved.at === 'number' &&
         Date.now() - saved.at < 900_000 &&
-        typeof saved.hash === 'string'
+        typeof saved.location === 'string'
       )
-        hash = validReturn(saved.hash);
+        location = validReturn(saved.location) || '/';
     }
   } catch {
     /* A regular login remains usable when the return location cannot be restored. */
@@ -66,8 +67,8 @@ export function restoreXReturn(): { hash: string; error: string } {
         : outcome === 'expired'
           ? '確認の有効期限が切れました。もう一度Xでログインしてください。'
           : 'Xのアカウントを確認できませんでした。時間をおいてお試しください。';
-  window.history.replaceState(null, '', `/${hash}`);
-  return { hash, error };
+  window.history.replaceState(null, '', location);
+  return { location, error };
 }
 
 export function XLoginButton({
@@ -299,7 +300,7 @@ export function AccountEntry({
             </>
           )}
           <p className="hint">
-            <a href="/#works">公開された作品を見る</a>
+            <Link href="/works">公開された作品を見る</Link>
           </p>
         </section>
       </main>

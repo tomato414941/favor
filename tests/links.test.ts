@@ -93,7 +93,9 @@ test('最初の受諾者に依頼をひも付けて再試行と納品を許可�
       { name: '物語.txt', content: Buffer.from('星の物語').toString('base64') },
     ]);
     assert.equal(
-      Buffer.from(s.service.download('demo-client', delivered.files[0]!.id).data).toString(),
+      Buffer.from(
+        s.service.download('demo-client', request.id, delivered.files[0]!.id).data,
+      ).toString(),
       '星の物語',
     );
     assert.equal(s.service.list('demo-client').length, 1);
@@ -278,17 +280,17 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     assert.equal(created.statusCode, 201);
     const { token, link } = created.json();
     const proof = { 'x-commission-link': token };
-    const read = await app.inject({ url: '/api/link', headers: proof });
+    const read = await app.inject({ url: '/api/links/by-token', headers: proof });
     assert.equal(read.statusCode, 200);
     assert.equal(read.json().brief, input.brief);
     assert.equal(read.headers['cache-control'], 'no-store');
     assert.equal(read.headers['referrer-policy'], 'no-referrer');
-    assert.equal((await app.inject(`/api/link?token=${token}`)).statusCode, 404);
+    assert.equal((await app.inject(`/api/links/by-token?token=${token}`)).statusCode, 404);
     assert.equal(
       (
         await app.inject({
           method: 'POST',
-          url: '/api/link/accept',
+          url: '/api/links/by-token/accept',
           payload: { agreeToRules: true },
           headers: { ...proof, ...headers, 'idempotency-key': key() },
         })
@@ -296,7 +298,8 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
       401,
     );
     assert.equal(
-      (await app.inject({ method: 'POST', url: '/api/link/decline', headers: proof })).statusCode,
+      (await app.inject({ method: 'POST', url: '/api/links/by-token/decline', headers: proof }))
+        .statusCode,
       403,
     );
     const first = await register('link_recipient');
@@ -305,7 +308,7 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     const accept = (cookie: string) =>
       app.inject({
         method: 'POST',
-        url: '/api/link/accept',
+        url: '/api/links/by-token/accept',
         payload: { agreeToRules: true },
         headers: { ...headers, ...proof, cookie, 'idempotency-key': operation },
       });
@@ -314,7 +317,10 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     const winner = results[0]!.statusCode === 200 ? first : other;
     const accepted = results.find((r) => r.statusCode === 200)!.json();
     assert.equal((await accept(winner)).json().requestId, accepted.requestId);
-    assert.equal((await app.inject({ url: '/api/link', headers: proof })).statusCode, 404);
+    assert.equal(
+      (await app.inject({ url: '/api/links/by-token', headers: proof })).statusCode,
+      404,
+    );
     assert.equal(
       (await app.inject({ url: '/api/links', headers: { cookie: sender } })).json().links[0].id,
       link.id,
@@ -329,15 +335,19 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     assert.equal(
       (
         await app.inject({
-          url: `/api/files/${delivery.json().files[0].id}`,
+          url: `/api/requests/${delivery.json().id}/files/${delivery.json().files[0].id}`,
           headers: { cookie: sender },
         })
       ).body,
       'a',
     );
     assert.equal(
-      (await app.inject({ url: `/api/files/${delivery.json().files[0].id}`, headers: proof }))
-        .statusCode,
+      (
+        await app.inject({
+          url: `/api/requests/${delivery.json().id}/files/${delivery.json().files[0].id}`,
+          headers: proof,
+        })
+      ).statusCode,
       401,
     );
   } finally {

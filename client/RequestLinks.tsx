@@ -10,7 +10,7 @@ import { paymentLabels } from '../src/shared';
 import { api } from './api';
 import { EmailLoginForm, XLoginButton } from './Auth';
 import { RequestForm, type RequestFormSettings } from './RequestForm';
-import { Arrow } from './ui';
+import { Arrow, Link } from './ui';
 
 import { yen, date, visibilityLabels } from './format';
 
@@ -113,7 +113,7 @@ export function RequestLinks({
     onChange(result.link);
     setUrls((current) => {
       const next = { ...current };
-      if (result.token) next[result.link.id] = `${window.location.origin}/#link=${result.token}`;
+      if (result.token) next[result.link.id] = `${window.location.origin}/link#${result.token}`;
       else delete next[result.link.id];
       return next;
     });
@@ -272,7 +272,7 @@ export function RequestLinkLanding({
     setLink(null);
     const account = await api<IdentitySession | null>('/auth/identity');
     setIdentity(account);
-    setLink(await api<RequestLinkView>('/link', { linkToken: token }));
+    setLink(await api<RequestLinkView>('/links/by-token', { linkToken: token }));
     setReady(true);
   }
   useEffect(() => {
@@ -285,14 +285,18 @@ export function RequestLinkLanding({
     }
     await actions.run(async () => {
       setLink(
-        await actions.mutate<RequestLinkView>('/link/accept', { agreeToRules: agreed }, token),
+        await actions.mutate<RequestLinkView>(
+          '/links/by-token/accept',
+          { agreeToRules: agreed },
+          token,
+        ),
       );
       setIdentity(await api<IdentitySession>('/auth/identity'));
     });
   }
   async function decline() {
     await actions.run(async () => {
-      await actions.mutate('/link/decline', {}, token);
+      await actions.mutate('/links/by-token/decline', {}, token);
       setLink(null);
       setDeclined(true);
     });
@@ -458,10 +462,10 @@ export function RequestLinkLanding({
               )}
               {link.requestId && (
                 <div className="detail-actions">
-                  <a className="primary" href={`/#request=${link.requestId}`}>
+                  <Link className="primary" href={`/requests/${link.requestId}`}>
                     受けた依頼へ
                     <Arrow />
-                  </a>
+                  </Link>
                 </div>
               )}
             </article>

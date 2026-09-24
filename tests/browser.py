@@ -56,7 +56,7 @@ def main():
             form.get_by_role('button', name='ログイン', exact=True).click()
 
         def compose(page, brief):
-            page.get_by_role('navigation').get_by_role('button', name='依頼を作る', exact=True).click()
+            page.get_by_role('navigation').get_by_role('link', name='依頼を作る', exact=True).click()
             expect(page.get_by_role('heading', name='依頼リンクを作成', exact=True)).to_be_visible()
             page.get_by_label('依頼内容', exact=True).fill(brief)
             page.get_by_label('依頼金額', exact=True).fill('12000')
@@ -65,7 +65,7 @@ def main():
         def created_url(page, brief):
             card = page.get_by_role('article', name='依頼リンク', exact=True).filter(has_text=brief)
             url = card.get_by_label('依頼リンク', exact=True).input_value()
-            tokens.append(url.split('#link=')[1])
+            tokens.append(url.split('link#')[1])
             return card, url
 
         sender = context()
@@ -124,7 +124,7 @@ def main():
             expect(detail).to_contain_text(brief)
             expect(detail).to_contain_text('¥12,000')
             assert receiver.request.get(f'{base}/api/auth/identity').json() is None
-            assert visitor.request.get(f'{base}/api/link').status == 404
+            assert visitor.request.get(f'{base}/api/links/by-token').status == 404
             assert brief not in visitor.request.get(base).text()
             layout(receiving, 'unregistered-reader')
 
@@ -140,10 +140,10 @@ def main():
                 assert result.status == 200
                 route.abort('failed')
 
-            receiving.route('**/api/link/accept', lose_acceptance)
+            receiving.route('**/api/links/by-token/accept', lose_acceptance)
             detail.get_by_role('button', name='この依頼を受ける', exact=True).click()
             expect(receiving.get_by_role('alert')).to_contain_text('接続を確認できませんでした')
-            receiving.unroute('**/api/link/accept', lose_acceptance)
+            receiving.unroute('**/api/links/by-token/accept', lose_acceptance)
             detail.get_by_role('button', name='この依頼を受ける', exact=True).click()
             expect(detail).to_contain_text('受諾済み')
             layout(receiving, 'accepted')
@@ -176,7 +176,7 @@ def main():
             layout(receiving, 'delivered')
 
             page.reload()
-            page.get_by_role('navigation').get_by_role('button', name=re.compile('^送った依頼')).click()
+            page.get_by_role('navigation').get_by_role('link', name=re.compile('^送った依頼')).click()
             delivered = page.get_by_role('article', name='依頼の詳細', exact=True)
             expect(delivered).to_contain_text('第2版')
             with page.expect_download() as download_info:
@@ -186,7 +186,7 @@ def main():
 
             delivered_id = sender.request.get(f'{base}/api/requests').json()['requests'][0]['id']
             text_id = next(f['id'] for f in sender.request.get(f'{base}/api/requests/{delivered_id}').json()['files'] if f['name'] == '完成版.txt')
-            visiting.goto(f'{base}/#works')
+            visiting.goto(f'{base}/works')
             expect(visiting.get_by_role('heading', name='作品', exact=True)).to_be_visible()
             visiting.get_by_role('link', name=re.compile(brief[:10])).click()
             shown = visiting.get_by_role('article', name='作品', exact=True)
@@ -198,7 +198,7 @@ def main():
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
             layout(receiving, 'email-login')
             register(receiving, receiver_email.upper())
-            receiving.get_by_role('navigation').get_by_role('button', name=re.compile('^受けた依頼')).click()
+            receiving.get_by_role('navigation').get_by_role('link', name=re.compile('^受けた依頼')).click()
             expect(receiving.get_by_role('article', name='依頼の詳細')).to_contain_text('第2版')
 
             brief2 = '今回は見送りを確認するための依頼です。'
@@ -223,7 +223,7 @@ def main():
                 else:
                     visiting.keyboard.press('Escape')
                 expect(decline_button).to_be_focused()
-                current_link = visitor.request.get(f'{base}/api/link', headers={'X-Commission-Link': new_url.split('#link=')[1]})
+                current_link = visitor.request.get(f'{base}/api/links/by-token', headers={'X-Commission-Link': new_url.split('link#')[1]})
                 assert current_link.json()['state'] == 'pending'
             decline_button.click()
             layout(visiting, 'decline-confirmation')

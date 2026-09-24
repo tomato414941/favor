@@ -5,16 +5,19 @@ import { RequestLinks } from './RequestLinks';
 import type { RequestFormSettings } from './RequestForm';
 import { RequestDetail, RequestStatus, type RequestAction } from './RequestDetail';
 import { yen } from './format';
+import { Link, navigate } from './ui';
 
-type Page = 'compose' | 'sent' | 'received';
+export type Page = 'new' | 'sent' | 'received' | 'request';
 
 export function Workspace({
-  initialRequestId,
+  page,
+  requestId,
   options,
   email,
   onSessionChange,
 }: {
-  initialRequestId: string | null;
+  page: Page;
+  requestId: string | null;
   options: AuthOptions;
   email?: string;
   onSessionChange: () => void;
@@ -23,8 +26,6 @@ export function Workspace({
   const [session, setSession] = useState<SessionView | null>(null);
   const [requests, setRequests] = useState<RequestView[]>([]);
   const [links, setLinks] = useState<RequestLinkView[]>([]);
-  const [chosenPage, setChosenPage] = useState<Page | null>(initialRequestId ? null : 'compose');
-  const [selectedId, setSelectedId] = useState<string | null>(initialRequestId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -121,55 +122,49 @@ export function Workspace({
     ticket.current++;
     setLinks((current) => [link, ...current.filter((item) => item.id !== link.id)]);
   };
-  const navigate = (next: Page) => {
-    setChosenPage(next);
+  const go = (path: string) => {
     setError('');
     setNotice('');
+    navigate(path);
   };
   const pendingLinks = links.filter((link) => link.state !== 'accepted');
   const sentRequests = requests.filter((request) => request.viewerRole === 'client');
   const receivedRequests = requests.filter((request) => request.viewerRole === 'creator');
-  const initialRole = requests.find((request) => request.id === initialRequestId)?.viewerRole;
-  const page: Page = chosenPage ?? (initialRole === 'creator' ? 'received' : 'sent');
-  const visible = page === 'sent' ? sentRequests : receivedRequests;
-  const selected = visible.find((request) => request.id === selectedId) ?? visible[0];
+  const current = requests.find((request) => request.id === requestId);
+  const side: 'sent' | 'received' | null =
+    page === 'sent' || page === 'received'
+      ? page
+      : page === 'request'
+        ? current?.viewerRole === 'creator'
+          ? 'received'
+          : 'sent'
+        : null;
+  const visible = side === 'received' ? receivedRequests : sentRequests;
+  const selected = current ?? visible[0];
   return (
     <>
       <div className="demo-banner">
         <span className="demo-mark">試用版</span>実際の支払いは発生しません
       </div>
       <header className="header shell">
-        <button
-          className="wordmark"
-          onClick={() => navigate('compose')}
-          aria-label="commission ホーム"
-        >
+        <Link className="wordmark" href="/" aria-label="commission ホーム">
           commission
-        </button>
+        </Link>
         {session && (
           <>
             <nav aria-label="メインナビゲーション">
-              <button
-                aria-current={page === 'compose' ? 'page' : undefined}
-                onClick={() => navigate('compose')}
-              >
+              <Link href="/new" aria-current={page === 'new' ? 'page' : undefined}>
                 依頼を作る
-              </button>
-              <button
-                aria-current={page === 'sent' ? 'page' : undefined}
-                onClick={() => navigate('sent')}
-              >
+              </Link>
+              <Link href="/sent" aria-current={side === 'sent' ? 'page' : undefined}>
                 送った依頼
                 <span className="count">{pendingLinks.length + sentRequests.length}</span>
-              </button>
-              <button
-                aria-current={page === 'received' ? 'page' : undefined}
-                onClick={() => navigate('received')}
-              >
+              </Link>
+              <Link href="/received" aria-current={side === 'received' ? 'page' : undefined}>
                 受けた依頼
                 <span className="count">{receivedRequests.length}</span>
-              </button>
-              <a href="/#works">作品</a>
+              </Link>
+              <Link href="/works">作品</Link>
             </nav>
             <div className="account-menu">
               <span title={email ?? session.name}>{email ?? session.name}</span>
@@ -212,18 +207,18 @@ export function Workspace({
           </div>
         ) : (
           <>
-            <div className={page === 'compose' ? undefined : 'list-panel'}>
+            <div className={page === 'new' ? undefined : 'list-panel'}>
               <RequestLinks
                 settings={settings}
-                mode={page === 'compose' ? 'compose' : page === 'sent' ? 'list' : 'hidden'}
+                mode={page === 'new' ? 'compose' : side === 'sent' ? 'list' : 'hidden'}
                 links={pendingLinks}
                 busy={busy}
                 run={run}
                 notify={setNotice}
                 onChange={changeLink}
-                onCreated={() => setChosenPage('sent')}
+                onCreated={() => navigate('/sent')}
               />
-              {page !== 'compose' &&
+              {page !== 'new' &&
                 (visible.length ? (
                   <div className="requests-layout">
                     <div className="request-list" aria-label="依頼を選択">
@@ -232,11 +227,7 @@ export function Workspace({
                           key={request.id}
                           className={`request-item ${request.id === selected?.id ? 'selected' : ''}`}
                           aria-pressed={request.id === selected?.id}
-                          onClick={() => {
-                            setSelectedId(request.id);
-                            setError('');
-                            setNotice('');
-                          }}
+                          onClick={() => go(`/requests/${request.id}`)}
                         >
                           <span className="request-item-top">
                             <RequestStatus request={request} />
@@ -264,14 +255,14 @@ export function Workspace({
                       />
                     )}
                   </div>
-                ) : page === 'sent' ? (
+                ) : side === 'sent' ? (
                   !pendingLinks.length && (
                     <div className="empty-state">
                       <h2>送った依頼はありません</h2>
                       <p>リンクを作って相手に共有すると、受諾から納品までをここで確認できます。</p>
-                      <button className="quiet-button" onClick={() => navigate('compose')}>
+                      <Link className="quiet-button" href="/new">
                         依頼を作る
-                      </button>
+                      </Link>
                     </div>
                   )
                 ) : (

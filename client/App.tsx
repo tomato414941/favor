@@ -4,12 +4,38 @@ import { api } from './api';
 import { AccountEntry, restoreXReturn } from './Auth';
 import { WorkPage, WorksList } from './Works';
 import { RequestLinkLanding } from './RequestLinks';
-import { Workspace } from './Workspace';
+import { Workspace, type Page } from './Workspace';
+import { Link } from './ui';
 
 const initialLocation = restoreXReturn();
+const location = () => `${window.location.pathname}${window.location.hash}`;
+
+type Route =
+  | { kind: 'home' }
+  | { kind: 'works' }
+  | { kind: 'work'; id: string }
+  | { kind: 'link'; token: string }
+  | { kind: 'workspace'; page: Page; requestId: string | null }
+  | { kind: 'missing' };
+
+function parse(value: string): Route {
+  const url = new URL(value, window.location.origin);
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/') return { kind: 'home' };
+  if (path === '/works') return { kind: 'works' };
+  const work = /^\/works\/([A-Za-z0-9-]{1,100})$/.exec(path);
+  if (work) return { kind: 'work', id: work[1]! };
+  if (path === '/link') return { kind: 'link', token: url.hash.slice(1) };
+  if (path === '/new') return { kind: 'workspace', page: 'new', requestId: null };
+  if (path === '/sent') return { kind: 'workspace', page: 'sent', requestId: null };
+  if (path === '/received') return { kind: 'workspace', page: 'received', requestId: null };
+  const request = /^\/requests\/([A-Za-z0-9-]{1,100})$/.exec(path);
+  if (request) return { kind: 'workspace', page: 'request', requestId: request[1]! };
+  return { kind: 'missing' };
+}
 
 export function App() {
-  const [hash, setHash] = useState(initialLocation.hash);
+  const [current, setCurrent] = useState(initialLocation.location);
   const [options, setOptions] = useState<AuthOptions | null>(null);
   const [identity, setIdentity] = useState<IdentitySession | null>(null);
   const [ready, setReady] = useState(false);
@@ -19,6 +45,8 @@ export function App() {
     setReady(false);
     setAttempt((value) => value + 1);
   }, []);
+  const route = parse(current);
+  const publicPage = route.kind === 'works' || route.kind === 'work' || route.kind === 'link';
   useEffect(() => {
     let active = true;
     setReady(false);
@@ -39,13 +67,27 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [attempt, hash]);
+  }, [attempt, publicPage, route.kind === 'link' ? route.token : '']);
   useEffect(() => {
-    const change = () => setHash(window.location.hash);
+    const change = () => setCurrent(location());
+    window.addEventListener('popstate', change);
     window.addEventListener('hashchange', change);
-    return () => window.removeEventListener('hashchange', change);
+    return () => {
+      window.removeEventListener('popstate', change);
+      window.removeEventListener('hashchange', change);
+    };
   }, []);
-  const route = new URLSearchParams(hash.slice(1));
+  if (route.kind === 'works') return <WorksList />;
+  if (route.kind === 'work') return <WorkPage key={route.id} id={route.id} />;
+  if (route.kind === 'missing')
+    return (
+      <main className="shell works-page">
+        <h1>ページが見つかりません</h1>
+        <p>
+          <Link href="/">ホームへ</Link>
+        </p>
+      </main>
+    );
   if (!options || !ready)
     return (
       <main className="shell">
@@ -59,13 +101,11 @@ export function App() {
         )}
       </main>
     );
-  if (route.has('works')) return <WorksList key={hash} />;
-  if (route.has('work')) return <WorkPage key={hash} id={route.get('work') ?? ''} />;
-  if (route.has('link'))
+  if (route.kind === 'link')
     return (
       <RequestLinkLanding
-        key={hash}
-        token={route.get('link') ?? ''}
+        key={route.token}
+        token={route.token}
         options={options}
         initialError={initialLocation.error}
       />
@@ -80,10 +120,13 @@ export function App() {
         initialError={initialLocation.error}
       />
     );
+  const page: Page = route.kind === 'workspace' ? route.page : 'new';
+  const requestId = route.kind === 'workspace' ? route.requestId : null;
   return (
     <Workspace
-      key={`${attempt}:${route.get('request') ?? 'workspace'}`}
-      initialRequestId={route.get('request')}
+      key={String(attempt)}
+      page={page}
+      requestId={requestId}
       options={options}
       email={identity?.email}
       onSessionChange={changed}
