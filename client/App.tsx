@@ -36,6 +36,8 @@ function parse(value: string): Route {
   if (path === '/me/works') return { kind: 'me', page: 'works', requestId: null };
   const request = /^\/me\/requests\/([A-Za-z0-9-]{1,100})$/.exec(path);
   if (request) return { kind: 'me', page: 'request', requestId: request[1]! };
+  const link = /^\/me\/links\/([A-Za-z0-9-]{1,100})$/.exec(path);
+  if (link) return { kind: 'me', page: 'link', requestId: link[1]! };
   return { kind: 'missing' };
 }
 
@@ -136,7 +138,7 @@ export function App() {
       </main>
     );
   const shown = signedIn ? identity : null;
-  if (route.kind === 'home') return <Home identity={shown} />;
+  if (route.kind === 'home') return <Home identity={shown} onLogout={logout} />;
   if (route.kind === 'works') return <WorksList identity={shown} onLogout={logout} />;
   if (route.kind === 'work')
     return <WorkPage key={route.id} id={route.id} identity={shown} onLogout={logout} />;

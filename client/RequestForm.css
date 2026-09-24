@@ -1,220 +1,67 @@
-.workspace {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-.workspace > main {
-  flex: 1;
-  padding-bottom: 56px;
-}
-.compose-page {
-  --ink: #38352e;
-  --muted: #746e63;
-  --line: #ded8cd;
-  --surface: #efebe2;
-  --link: #a4442d;
-  color: var(--ink);
-  background: #f7f4ec;
-}
-.compose-page .shell {
-  width: min(1120px, calc(100% - 88px));
-}
-.compose-page .demo-banner {
-  border-color: var(--line);
-}
-.compose-page .header {
-  min-height: 91px;
-  gap: 32px;
-}
-.compose-page .wordmark {
-  font-family: 'Newsreader', serif;
-  font-style: italic;
-  font-weight: 500;
-  font-size: 32px;
-  letter-spacing: -0.065em;
-}
-.compose-page .compose-layout {
-  max-width: none;
-  padding-top: 42px;
-}
-.compose-page .request-form {
-  border: 0;
-  background: none;
+.request-form {
+  min-width: 0;
 }
 .compose-heading {
   margin-bottom: 30px;
-  font-size: 25px;
-  font-weight: 400;
+  font-size: 22px;
 }
-.compose-page .form-fields {
-  padding: 0;
+.request-form textarea {
+  min-height: 142px;
+  overflow: hidden;
 }
-.compose-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  align-items: start;
-  gap: 44px;
+.request-form .field-meta {
+  justify-content: flex-end;
 }
-.letter-editor {
+.delivery-options {
   display: flex;
-  flex-direction: column;
-  gap: 22px;
-  min-width: 0;
-  padding: 29px 32px 22px;
-  border: 1px solid var(--line);
-  background: #fffcf6;
-  box-shadow: 3px 4px 0 #eee8dc;
+  gap: 32px;
 }
-.letter-editor:focus-within {
-  outline: 2px solid var(--link);
-  outline-offset: 3px;
+.delivery-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
 }
-.letter-editor > label {
-  font-size: 13px;
-  color: var(--muted);
-}
-.letter-editor textarea {
-  padding: 0;
-  min-height: 384px;
-  border: 0;
-  border-radius: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 31px,
-    #e9e3d8 31px,
-    #e9e3d8 32px
-  );
-  font-size: 16px;
-  line-height: 32px;
-}
-.letter-editor textarea:focus-visible {
-  outline: none;
-}
-.letter-count {
-  align-self: end;
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.compose-options .field {
-  margin-bottom: 27px;
-}
-.compose-options .field:last-child {
-  margin-bottom: 0;
-}
-.compose-options .field > label,
-.compose-options .label-row label,
-.compose-options legend {
-  font-weight: 400;
-}
-.optional-label {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 11px;
-}
-.compose-options .text-input,
-.compose-options .amount-input {
-  border-color: #c9c1b4;
-  border-radius: 2px;
-  background: #fffcf6;
-}
-.compose-options .text-input:focus {
-  border-color: var(--link);
-}
-.compose-options .amount-input {
-  max-width: 100%;
-}
-.compose-options .hint {
-  font-size: 11px;
-}
-.compose-options .choice {
-  grid-template-columns: 17px minmax(0, 1fr);
-  gap: 3px 10px;
-  padding: 11px 0;
-}
-.compose-options .choice-description {
-  grid-column: 2;
-  font-size: 11px;
-}
-.compose-page .payment-note {
-  margin-top: 36px;
-  padding-top: 25px;
-}
-.compose-page .agreement {
+.recipient-field {
   margin-top: 16px;
-  padding: 0;
-  background: none;
 }
-.compose-page .submit-row {
-  margin-top: 29px;
+.recipient-field > label {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 13px;
 }
-.compose-page .primary {
-  min-width: 188px;
-  min-height: 50px;
-  justify-content: space-between;
-  padding-inline: 20px;
-  background: var(--link);
+.review-brief {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  line-height: 2;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
 }
-.compose-page .primary:hover:not(:disabled) {
-  background: #873923;
+.review-recipient {
+  grid-column: 1 / -1;
 }
-@media (max-width: 980px) {
-  .compose-page .shell {
-    width: calc(100% - 48px);
-  }
-  .compose-page .header {
-    flex-wrap: wrap;
-    gap: 18px;
-    padding-top: 17px;
-  }
-  .compose-page .header nav {
-    order: 3;
-    width: 100%;
-    gap: 22px;
-    min-height: 48px;
-    overflow-x: auto;
-  }
-  .compose-fields {
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 28px;
-  }
-  .letter-editor {
-    padding-inline: 23px;
-  }
+.review-conditions {
+  display: grid;
+  gap: 12px;
+  padding-block: 24px;
+  border-block: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.9;
 }
-@media (max-width: 760px) {
-  .workspace > main {
-    padding-bottom: 38px;
-  }
-  .compose-page .shell {
-    width: calc(100% - 40px);
-  }
-  .compose-page .header nav {
-    gap: 18px;
-  }
-  .compose-page .compose-layout {
-    padding-top: 28px;
-  }
+.review-agreement {
+  margin-top: 24px;
+}
+.request-form .submit-row {
+  gap: 12px;
+}
+@media (max-width: 480px) {
   .compose-heading {
-    margin-bottom: 23px;
-    font-size: 22px;
+    margin-bottom: 24px;
+    font-size: 20px;
   }
-  .compose-fields {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 32px;
-  }
-  .letter-editor {
-    padding: 22px 20px 17px;
-    gap: 16px;
-  }
-  .letter-editor textarea {
-    min-height: 256px;
-  }
-  .compose-page .payment-note {
-    margin-top: 28px;
-  }
-  .compose-page .submit-row .primary {
-    width: 100%;
+  .request-form .submit-row {
+    flex-direction: column-reverse;
   }
 }

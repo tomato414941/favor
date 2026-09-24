@@ -1,4 +1,79 @@
-import type { AnchorHTMLAttributes, MouseEvent } from 'react';
+import { useId, useRef, useState, type AnchorHTMLAttributes, type MouseEvent } from 'react';
+
+export function ConfirmAction({
+  label,
+  question,
+  description,
+  confirmLabel = label,
+  busy,
+  onConfirm,
+}: {
+  label: string;
+  question: string;
+  description?: string;
+  confirmLabel?: string;
+  busy: boolean;
+  onConfirm: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const locked = useRef(false);
+  const questionId = useId();
+  function close() {
+    setOpen(false);
+    requestAnimationFrame(() => trigger.current?.focus());
+  }
+  async function confirm() {
+    if (busy || locked.current) return;
+    locked.current = true;
+    try {
+      await onConfirm();
+      close();
+    } finally {
+      locked.current = false;
+    }
+  }
+  return open ? (
+    <div
+      className="inline-confirmation"
+      role="group"
+      aria-labelledby={questionId}
+      aria-busy={busy}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !busy && !locked.current) {
+          event.preventDefault();
+          close();
+        }
+      }}
+    >
+      <p id={questionId}>{question}</p>
+      {description && <p className="hint">{description}</p>}
+      <div className="action-buttons">
+        <button type="button" className="quiet-button" autoFocus disabled={busy} onClick={close}>
+          戻る
+        </button>
+        <button
+          type="button"
+          className="quiet-button"
+          disabled={busy}
+          onClick={() => void confirm()}
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </div>
+  ) : (
+    <button
+      ref={trigger}
+      type="button"
+      className="text-button"
+      disabled={busy}
+      onClick={() => setOpen(true)}
+    >
+      {label}
+    </button>
+  );
+}
 
 export function Arrow({ down = false }: { down?: boolean }) {
   return (

@@ -2,7 +2,6 @@
 from html import escape
 import os
 from pathlib import Path
-import re
 import sys
 import tempfile
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -76,7 +75,7 @@ def main():
             page = sender.new_page()
             page.goto(base)
             page.wait_for_load_state("networkidle")
-            expect(page.get_by_role("heading", name="Favor", exact=True)).to_be_visible()
+            expect(page.get_by_role("heading", name="公開作品", exact=True)).to_be_visible()
             page.get_by_role("link", name="お願いを書く", exact=True).click()
             expect(page.get_by_role("heading", name="ログイン", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Xでログイン", exact=True)).to_be_visible()
@@ -92,8 +91,9 @@ def main():
             layout(page, "x-registration")
             page.get_by_role("button", name="登録する", exact=True).click()
             expect(page.get_by_role("heading", name="お願いを書く", exact=True)).to_be_visible()
-            page.get_by_label("お願いしたいこと", exact=True).fill(private_brief)
-            page.get_by_role("checkbox", name=re.compile("^見積もり・打ち合わせ")).check()
+            page.get_by_label("内容", exact=True).fill(private_brief)
+            page.get_by_role("button", name="確認へ", exact=True).click()
+            page.get_by_role("checkbox", name="内容・金額・条件を確認しました", exact=True).check()
             page.get_by_role("button", name="リンクを作成", exact=True).click()
             card = page.get_by_role("article", name="依頼リンク", exact=True)
             link = card.get_by_label("依頼リンク", exact=True).input_value()
@@ -104,17 +104,17 @@ def main():
             receiving.goto(link)
             expect(receiving.get_by_role("article", name="依頼", exact=True)).to_contain_text(private_brief)
             assert recipient.request.get(f"{base}/api/auth/identity").json() is None
-            receiving.get_by_role("button", name="受諾へ進む").click()
+            receiving.get_by_role("button", name="受ける").click()
             receiving.get_by_role("button", name="Xでログイン", exact=True).click()
             receiving.get_by_role("link", name="確認を中止する").click()
             expect(receiving.get_by_role("alert")).to_contain_text("Xでの確認を中止しました")
             assert receiving.url == link
-            receiving.get_by_role("button", name="受諾へ進む").click()
+            receiving.get_by_role("button", name="受ける").click()
             login(receiving, "澪")
             expect(receiving.get_by_role("article", name="依頼", exact=True)).to_contain_text("澪として受け取ります")
             assert receiving.url == link
             receiving.get_by_role("checkbox", name="内容・金額・期限を確認しました", exact=True).check()
-            receiving.get_by_role("button", name="この依頼を受ける", exact=True).click()
+            receiving.get_by_role("button", name="受ける", exact=True).click()
             expect(receiving.get_by_role("article", name="依頼", exact=True)).to_contain_text("受諾済み")
             layout(receiving, "x-received")
             receiving.get_by_role("link", name="受けた依頼へ", exact=True).click()
@@ -122,7 +122,7 @@ def main():
             expect(detail).to_contain_text("制作中")
             assert recipient.request.get(f"{base}/api/auth/identity").json()["registered"] is True
             detail.get_by_label("納品ファイルを選択", exact=True).set_input_files({"name": "作品.txt", "mimeType": "text/plain", "buffer": "夜空の物語".encode()})
-            detail.get_by_role("button", name="ファイルを納品", exact=True).click()
+            detail.get_by_role("button", name="作品を渡す", exact=True).click()
             expect(detail).to_contain_text("納品済み")
             layout(receiving, "x-delivered")
             for request in requests:

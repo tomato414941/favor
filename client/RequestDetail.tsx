@@ -7,7 +7,7 @@ import {
   type UploadInput,
 } from '../src/shared';
 import { encodeFile } from './api';
-import { Arrow, Link } from './ui';
+import { Arrow, ConfirmAction, Link } from './ui';
 import { date, number, visibilityLabels, yen } from './format';
 
 interface Limits {
@@ -26,12 +26,7 @@ const reasons: Record<string, string> = {
   payment_expired: '支払いの確認期限を過ぎました。',
 };
 export function RequestStatus({ request }: { request: RequestView }) {
-  return (
-    <span className={`status status-${request.state}`}>
-      <i />
-      {requestLabels[request.state]}
-    </span>
-  );
+  return <span className={`status status-${request.state}`}>{requestLabels[request.state]}</span>;
 }
 export function RequestDetail({
   request,
@@ -50,52 +45,29 @@ export function RequestDetail({
     role === 'creator' &&
     ['accepted', 'delivered'].includes(request.state) &&
     Date.now() < request.deliverBy;
-  function cancel() {
-    const message = '制作をギブアップし、依頼者に返金しますか？';
-    if (window.confirm(message)) void act(request, { type: 'cancel' });
-  }
+  const [replacing, setReplacing] = useState(false);
+  useEffect(() => setReplacing(false), [request.deliveryVersion]);
   return (
     <article className="request-detail" aria-label="依頼の詳細">
       <div className="detail-heading">
-        <h2>依頼の詳細</h2>
+        <h1>{role === 'creator' ? `${request.clientName}から` : `${request.creatorName}へ`}</h1>
         <RequestStatus request={request} />
       </div>
-      <p className="detail-parties">
-        {request.clientName} <Arrow /> {request.creatorName}
-      </p>
       {request.state === 'delivered' && request.visibility !== 'hidden' && (
         <p className="hint">
           <Link href={`/works/${request.id}`}>作品ページを見る</Link>
         </p>
       )}
-      {request.state !== 'cancelled' && (
-        <ol className="timeline" aria-label="取引の流れ">
-          {['依頼を作成', '受諾・制作', '納品'].map((label, index) => {
-            const step = request.state === 'delivered' ? 2 : request.state === 'accepted' ? 1 : 0;
-            return (
-              <li
-                className={index <= step ? 'reached' : ''}
-                aria-current={index === step ? 'step' : undefined}
-                key={label}
-              >
-                <span>{index < step ? '✓' : String(index + 1).padStart(2, '0')}</span>
-                {label}
-              </li>
-            );
-          })}
-        </ol>
-      )}
       <div className="brief-block">
-        <div className="brief-label">依頼内容</div>
         <p>{request.brief}</p>
       </div>
       <dl className="detail-facts">
         <div>
-          <dt>依頼金額</dt>
+          <dt>金額</dt>
           <dd>{yen(request.amount)}</dd>
         </div>
         <div>
-          <dt>公開範囲</dt>
+          <dt>公開設定</dt>
           <dd>{visibilityLabels[request.visibility]}</dd>
         </div>
         <div>
@@ -117,7 +89,7 @@ export function RequestDetail({
       </dl>
       {request.state === 'cancelled' && (
         <div className="cancellation-note">
-          <h3>この依頼はキャンセルされました</h3>
+          <h3>キャンセル済み</h3>
           <p>
             {reasons[request.cancelledReason ?? ''] ?? '取引は終了しています。'}
             {request.paymentState === 'refunded'
@@ -151,25 +123,36 @@ export function RequestDetail({
           ))}
         </section>
       )}
-      {role === 'client' && request.state === 'accepted' && (
-        <p className="waiting-note">作り手が制作しています。作品が届くのをお待ちください。</p>
-      )}
       {canDeliver &&
         (request.state === 'delivered' ? (
-          <details className="redelivery">
-            <summary>ファイルを再納品する</summary>
-            <p className="hint">元の納品期限まで、作り手の判断でファイルを差し替えられます。</p>
-            <DeliveryForm request={request} limits={limits} busy={busy} act={act} />
-          </details>
+          <section className="redelivery">
+            {replacing ? (
+              <>
+                <button className="text-button" disabled={busy} onClick={() => setReplacing(false)}>
+                  差し替えをやめる
+                </button>
+                <DeliveryForm request={request} limits={limits} busy={busy} act={act} />
+              </>
+            ) : (
+              <button className="quiet-button" disabled={busy} onClick={() => setReplacing(true)}>
+                作品を差し替える
+              </button>
+            )}
+          </section>
         ) : (
           <DeliveryForm request={request} limits={limits} busy={busy} act={act} />
         ))}
       {role === 'creator' && request.state === 'accepted' && (
-        <button className="give-up" onClick={cancel} disabled={busy}>
-          制作をギブアップする
-        </button>
+        <div className="cancel-action">
+          <ConfirmAction
+            label="中止する"
+            question="この依頼を中止しますか？"
+            description="依頼者に返金します。"
+            busy={busy}
+            onConfirm={() => act(request, { type: 'cancel' })}
+          />
+        </div>
       )}
-      <p className="detail-demo-note">支払い・返金は体験用です。実際のお金は動きません。</p>
     </article>
   );
 }
@@ -220,7 +203,6 @@ function DeliveryForm({
   }, [request.deliveryVersion]);
   return (
     <form className="delivery-form" onSubmit={(event) => void deliver(event)}>
-      <h3>作品を届ける</h3>
       <label className="upload-label" htmlFor={`files-${request.id}`}>
         納品ファイルを選択
       </label>
@@ -261,7 +243,11 @@ function DeliveryForm({
         </p>
       )}
       <button className="primary" type="submit" disabled={busy || reading}>
-        {busy || reading ? '納品しています…' : 'ファイルを納品'}
+        {busy || reading
+          ? '送っています…'
+          : request.state === 'delivered'
+            ? '差し替える'
+            : '作品を渡す'}
         <Arrow />
       </button>
     </form>

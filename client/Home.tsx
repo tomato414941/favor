@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import '@fontsource/newsreader/500-italic.css';
+import { SiteHeader } from './Header';
 import type { IdentitySession, WorkView } from '../src/shared';
 import { api } from './api';
 import { Arrow, Link } from './ui';
 import './Home.css';
 
-export function Home({ identity }: { identity: IdentitySession | null }) {
+export function Home({
+  identity,
+  onLogout,
+}: {
+  identity: IdentitySession | null;
+  onLogout: () => Promise<void>;
+}) {
   const [works, setWorks] = useState<WorkView[] | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -23,61 +29,18 @@ export function Home({ identity }: { identity: IdentitySession | null }) {
       <div className="demo-banner">
         <span className="demo-mark">試用版</span>実際の支払いは発生しません
       </div>
-      <header className="home-header home-shell">
-        <Link className="home-wordmark" href="/" aria-label="Favor ホーム">
-          Favor
-        </Link>
-        <nav aria-label="メインナビゲーション">
-          <Link href="/works">公開作品</Link>
-          {identity?.registered ? (
-            <Link href="/me/sent">自分のページへ</Link>
-          ) : (
-            <Link href="/login">ログイン</Link>
-          )}
-        </nav>
-      </header>
-      <main className="home-shell">
-        <section className="home-hero" aria-labelledby="home-title">
-          <div className="home-intro">
-            <h1 id="home-title">Favor</h1>
-            <div className="home-actions">
-              <Link className="home-create" href="/me/new">
-                お願いを書く <Arrow />
-              </Link>
-              <Link className="home-browse" href="/works">
-                作品を見る
-              </Link>
-            </div>
-          </div>
-          <svg className="home-letter" viewBox="0 0 520 430" fill="none" aria-hidden="true">
-            <g transform="rotate(8 276 260)">
-              <path d="M84 213 267 88l185 125v167H84Z" fill="#e7b58b" />
-              <path d="m84 213 183 112 185-112" stroke="#c1845c" strokeWidth="1.5" />
-            </g>
-            <g transform="rotate(-9 260 211)">
-              <path d="M131 65h266v276H131Z" fill="#d6bfa7" opacity=".25" />
-              <path d="M123 54h266v276H123Z" fill="#fffcf6" stroke="#d8cebe" />
-              <path d="M157 186h191m-191 28h191m-191 28h133" stroke="#dcd6cb" strokeWidth="1.5" />
-              <path
-                d="m276 94-4 25 23 10-25 4-5 25-10-23-26 3 19-18-11-23 23 12Z"
-                stroke="#b04d32"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            </g>
-            <g transform="rotate(8 276 260)">
-              <path d="m84 213 183 112 185-112v167H84Z" fill="#edc5a2" />
-              <path d="M84 380 242 316m210 64L292 316" stroke="#c9936a" strokeWidth="1.5" />
-              <path d="m84 213 183 112 185-112" stroke="#c9936a" strokeWidth="1.5" />
-              <path d="M84 213v167h368V213" stroke="#c9936a" strokeWidth="1.5" />
-            </g>
-          </svg>
-        </section>
+      <SiteHeader identity={identity} active={null} onLogout={onLogout} />
+      <main className="shell">
+        <div className="home-actions">
+          <Link className="primary" href="/me/new">
+            お願いを書く <Arrow />
+          </Link>
+        </div>
         <section className="home-works" aria-labelledby="home-works-title">
           <div className="home-section-heading">
-            <h2 id="home-works-title">公開作品</h2>
+            <h1 id="home-works-title">公開作品</h1>
             <Link href="/works">
-              一覧へ <Arrow />
+              作品を見る <Arrow />
             </Link>
           </div>
           {error ? (
@@ -114,7 +77,9 @@ export function Home({ identity }: { identity: IdentitySession | null }) {
           )}
         </section>
       </main>
-      <footer className="home-footer home-shell">Favor</footer>
+      <footer className="footer shell">
+        <span className="footer-brand">Favor</span>
+      </footer>
     </div>
   );
 }

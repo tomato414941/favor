@@ -7,7 +7,7 @@ import type {
   SessionView,
 } from '../src/shared';
 import { api, ApiError } from './api';
-import { RequestLinks } from './RequestLinks';
+import { RequestLinks, LinkStatus } from './RequestLinks';
 import type { RequestFormSettings } from './RequestForm';
 import { RequestDetail, RequestStatus, type RequestAction } from './RequestDetail';
 import { yen } from './format';
@@ -16,7 +16,7 @@ import { SiteHeader } from './Header';
 import { WorkImages } from './Works';
 import { visibilityLabels } from './format';
 
-export type Page = 'new' | 'sent' | 'received' | 'works' | 'request';
+export type Page = 'new' | 'sent' | 'received' | 'works' | 'request' | 'link';
 
 export function Workspace({
   page,
@@ -121,9 +121,7 @@ export function Workspace({
       const updated = await api<RequestView>(path, { body, key: operation.key });
       keys.current.delete(path);
       setRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setNotice(
-        action.type === 'deliver' ? 'ファイルを納品しました。' : '依頼をキャンセルしました。',
-      );
+      setNotice(action.type === 'deliver' ? '作品を渡しました。' : '依頼を中止しました。');
       await refresh();
     });
   }
@@ -131,28 +129,46 @@ export function Workspace({
     ticket.current++;
     setLinks((current) => [link, ...current.filter((item) => item.id !== link.id)]);
   };
-  const go = (path: string) => {
-    setError('');
-    setNotice('');
-    navigate(path);
-  };
   const pendingLinks = links.filter((link) => link.state !== 'accepted');
   const sentRequests = requests.filter((request) => request.viewerRole === 'client');
   const receivedRequests = requests.filter((request) => request.viewerRole === 'creator');
   const current = requests.find((request) => request.id === requestId);
   const side: 'sent' | 'received' | null =
-    page === 'sent' || page === 'received'
-      ? page
-      : page === 'request'
-        ? current?.viewerRole === 'creator'
-          ? 'received'
-          : 'sent'
-        : null;
+    page === 'sent' || page === 'link'
+      ? 'sent'
+      : page === 'received'
+        ? 'received'
+        : page === 'request'
+          ? current?.viewerRole === 'creator'
+            ? 'received'
+            : 'sent'
+          : null;
   const visible = side === 'received' ? receivedRequests : sentRequests;
   const mine = receivedRequests.filter((request) => request.state === 'delivered');
-  const selected = current ?? visible[0];
+  const rows = [
+    ...visible.map((request) => ({
+      id: request.id,
+      createdAt: request.createdAt,
+      href: `/me/requests/${request.id}`,
+      brief: request.brief,
+      person: request.viewerRole === 'creator' ? request.clientName : request.creatorName,
+      amount: request.amount,
+      status: <RequestStatus request={request} />,
+    })),
+    ...(side === 'sent'
+      ? pendingLinks.map((link) => ({
+          id: link.id,
+          createdAt: link.createdAt,
+          href: `/me/links/${link.id}`,
+          brief: link.brief,
+          person: link.recipientEmail ?? 'リンクで共有',
+          amount: link.amount,
+          status: <LinkStatus link={link} />,
+        }))
+      : []),
+  ].sort((a, b) => b.createdAt - a.createdAt);
   return (
-    <div className={page === 'new' ? 'workspace compose-page' : 'workspace'}>
+    <div className="workspace">
       <div className="demo-banner">
         <span className="demo-mark">試用版</span>実際の支払いは発生しません
       </div>
@@ -203,8 +219,20 @@ export function Workspace({
           </div>
         ) : (
           <>
-            {page === 'works' ? (
+            <RequestLinks
+              settings={settings}
+              mode={page === 'new' ? 'compose' : page === 'link' ? 'detail' : 'hidden'}
+              linkId={requestId}
+              links={links}
+              busy={busy}
+              run={run}
+              notify={setNotice}
+              onChange={changeLink}
+              onCreated={(id) => navigate(`/me/links/${id}`)}
+            />
+            {page === 'works' && (
               <div className="list-panel">
+                <h1 className="page-title">自分の作品</h1>
                 {mine.length ? (
                   <ul className="works-list">
                     {mine.map((request) => (
@@ -212,7 +240,7 @@ export function Workspace({
                         <Link href={`/me/requests/${request.id}`}>
                           <WorkImages work={request} />
                           <span className="work-parties">
-                            {visibilityLabels[request.visibility]} · {request.clientName}からの依頼
+                            {visibilityLabels[request.visibility]} · {request.clientName}から
                           </span>
                           <span className="work-brief">{request.brief}</span>
                         </Link>
@@ -225,79 +253,61 @@ export function Workspace({
                     ))}
                   </ul>
                 ) : (
+                  <p className="empty-state">作品はまだありません</p>
+                )}
+              </div>
+            )}
+            {(page === 'sent' || page === 'received') && (
+              <div className="list-panel">
+                <h1 className="page-title">{page === 'sent' ? '送った依頼' : '受けた依頼'}</h1>
+                {rows.length ? (
+                  <ul
+                    className="request-list"
+                    aria-label={page === 'sent' ? '送った依頼' : '受けた依頼'}
+                  >
+                    {rows.map((row) => (
+                      <li key={row.id}>
+                        <Link className="request-row" href={row.href}>
+                          <span className="request-excerpt">{row.brief}</span>
+                          <span className="request-person">{row.person}</span>
+                          <span className="request-amount">{yen(row.amount)}</span>
+                          {row.status}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
                   <div className="empty-state">
-                    <h2>納品した作品はまだありません</h2>
-                    <p>受けた依頼に納品すると、ここに作品が並びます。</p>
+                    <p>{page === 'sent' ? '送った依頼はありません' : '受けた依頼はありません'}</p>
+                    {page === 'sent' && (
+                      <Link className="quiet-button" href="/me/new">
+                        お願いを書く
+                      </Link>
+                    )}
                   </div>
                 )}
               </div>
-            ) : (
-              <div className={page === 'new' ? undefined : 'list-panel'}>
-                <RequestLinks
-                  settings={settings}
-                  mode={page === 'new' ? 'compose' : side === 'sent' ? 'list' : 'hidden'}
-                  links={pendingLinks}
-                  busy={busy}
-                  run={run}
-                  notify={setNotice}
-                  onChange={changeLink}
-                  onCreated={() => navigate('/me/sent')}
-                />
-                {page !== 'new' &&
-                  (visible.length ? (
-                    <div className="requests-layout">
-                      <div className="request-list" aria-label="依頼を選択">
-                        {visible.map((request) => (
-                          <button
-                            key={request.id}
-                            className={`request-item ${request.id === selected?.id ? 'selected' : ''}`}
-                            aria-pressed={request.id === selected?.id}
-                            onClick={() => go(`/me/requests/${request.id}`)}
-                          >
-                            <span className="request-item-top">
-                              <RequestStatus request={request} />
-                            </span>
-                            <span className="request-excerpt">{request.brief}</span>
-                            <span className="request-item-bottom">
-                              <span>
-                                {request.viewerRole === 'creator'
-                                  ? request.clientName
-                                  : request.creatorName}
-                              </span>
-                              <span>{yen(request.amount)}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                      {selected && (
-                        <RequestDetail
-                          key={`${selected.viewerRole}:${selected.id}`}
-                          request={selected}
-                          role={selected.viewerRole}
-                          limits={settings.limits}
-                          busy={busy}
-                          act={act}
-                        />
-                      )}
-                    </div>
-                  ) : side === 'sent' ? (
-                    !pendingLinks.length && (
-                      <div className="empty-state">
-                        <h2>送った依頼はありません</h2>
-                        <p>
-                          リンクを作って相手に共有すると、受諾から納品までをここで確認できます。
-                        </p>
-                        <Link className="quiet-button" href="/me/new">
-                          お願いを書く
-                        </Link>
-                      </div>
-                    )
-                  ) : (
-                    <div className="empty-state">
-                      <h2>受けた依頼はありません</h2>
-                      <p>依頼リンクを受諾すると、ここで制作・納品を進められます。</p>
-                    </div>
-                  ))}
+            )}
+            {page === 'request' && (
+              <div className="detail-page">
+                <Link
+                  className="back-link"
+                  href={side === 'received' ? '/me/received' : '/me/sent'}
+                >
+                  {side === 'received' ? '受けた依頼へ' : '送った依頼へ'}
+                </Link>
+                {current ? (
+                  <RequestDetail
+                    key={current.id}
+                    request={current}
+                    role={current.viewerRole}
+                    limits={settings.limits}
+                    busy={busy}
+                    act={act}
+                  />
+                ) : (
+                  <p className="empty-state">依頼が見つかりません</p>
+                )}
               </div>
             )}
           </>

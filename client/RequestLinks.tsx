@@ -10,7 +10,7 @@ import { paymentLabels } from '../src/shared';
 import { api, ApiError } from './api';
 import { EmailLoginForm, XLoginButton } from './Auth';
 import { RequestForm, type RequestFormSettings } from './RequestForm';
-import { Arrow, Link } from './ui';
+import { Arrow, ConfirmAction, Link } from './ui';
 
 import { yen, date, visibilityLabels } from './format';
 
@@ -55,16 +55,15 @@ function LinkFacts({ link }: { link: RequestLinkView }) {
   return (
     <>
       <div className="brief-block">
-        <div className="brief-label">依頼内容</div>
         <p>{link.brief}</p>
       </div>
       <dl className="detail-facts">
         <div>
-          <dt>依頼金額</dt>
+          <dt>金額</dt>
           <dd>{yen(link.amount)}</dd>
         </div>
         <div>
-          <dt>納品後の公開範囲</dt>
+          <dt>公開設定</dt>
           <dd>{visibilityLabels[link.visibility]}</dd>
         </div>
         <div>
@@ -91,6 +90,7 @@ function LinkFacts({ link }: { link: RequestLinkView }) {
 export function RequestLinks({
   settings,
   mode,
+  linkId,
   links,
   busy,
   run,
@@ -99,13 +99,14 @@ export function RequestLinks({
   onCreated,
 }: {
   settings: RequestFormSettings;
-  mode: 'compose' | 'list' | 'hidden';
+  mode: 'compose' | 'detail' | 'hidden';
+  linkId: string | null;
   links: RequestLinkView[];
   busy: boolean;
   run: (action: () => Promise<void>) => Promise<void>;
   notify: (message: string) => void;
   onChange: (link: RequestLinkView) => void;
-  onCreated: () => void;
+  onCreated: (id: string) => void;
 }) {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const mutate = useMutationKeys();
@@ -124,17 +125,15 @@ export function RequestLinks({
       save(result);
       notify(
         result.link.delivery === 'email'
-          ? `依頼を${result.link.recipientEmail ?? '相手'}へメールで送りました。`
+          ? `${result.link.recipientEmail ?? '相手'}へ送りました。`
           : result.token
-            ? '依頼リンクを作成しました。依頼する相手だけに共有してください。'
-            : '作成済みの依頼を確認しました。共有するリンクを再発行してください。',
+            ? 'リンクを作成しました。'
+            : '作成済みの依頼を確認しました。リンクを再発行してください。',
       );
-      onCreated();
+      onCreated(result.link.id);
     });
   }
   async function reissue(link: RequestLinkView) {
-    if (!window.confirm('古いリンクを無効にして再発行しますか？受諾期限・納品期限は変わりません。'))
-      return;
     await run(async () => {
       setUrls((current) => {
         const next = { ...current };
@@ -145,16 +144,14 @@ export function RequestLinks({
       save(result);
       notify(
         result.link.delivery === 'email'
-          ? '新しいリンクをメールで送り直しました。前のリンクは使えません。'
+          ? '新しいリンクをメールで送り直しました。'
           : result.token
-            ? 'リンクを再発行しました。相手に新しいリンクを共有してください。'
+            ? 'リンクを再発行しました。'
             : '再発行済みのリンクを表示できません。もう一度再発行してください。',
       );
     });
   }
   async function withdraw(link: RequestLinkView) {
-    if (!window.confirm('この依頼を取り消しますか？リンクを無効にし、支払確保を解除します。'))
-      return;
     await run(async () => {
       onChange(await mutate<RequestLinkView>(`/links/${link.id}/withdraw`));
       setUrls((current) => {
@@ -173,86 +170,86 @@ export function RequestLinks({
       } catch {
         throw new Error('コピーできませんでした。リンク欄を選択してコピーしてください。');
       }
-      notify('依頼リンクをコピーしました。');
+      notify('リンクをコピーしました。');
     });
   }
   if (mode === 'hidden') return null;
   if (mode === 'compose')
     return (
-      <section className="request-links-section">
-        <div className="compose-layout">
-          <RequestForm settings={settings} busy={busy} submit={submit} />
-        </div>
-      </section>
+      <div className="compose-layout">
+        <RequestForm settings={settings} busy={busy} submit={submit} />
+      </div>
     );
-  if (!links.length) return null;
+  const link = links.find((item) => item.id === linkId);
   return (
-    <div className="request-link-list">
-      {links.map((link) => (
-        <article className="request-detail request-link-card" key={link.id} aria-label="依頼リンク">
+    <div className="detail-page">
+      <Link className="back-link" href="/me/sent">
+        送った依頼へ
+      </Link>
+      {link ? (
+        <article className="request-detail" key={link.id} aria-label="依頼リンク">
           <div className="detail-heading">
-            <span className="eyebrow">共有した依頼</span>
-            <span className={`status status-${link.state === 'pending' ? 'pending' : 'cancelled'}`}>
-              <i />
-              {link.state === 'pending' ? '受諾待ち' : '受付終了'}
-            </span>
+            <h1>{link.delivery === 'email' ? link.recipientEmail : 'リンクで共有'}</h1>
+            <LinkStatus link={link} />
           </div>
-          <h2>
-            {link.state === 'pending' ? '相手の受諾を待っています' : 'この依頼の受付は終了しました'}
-          </h2>
           <LinkFacts link={link} />
-          {link.state === 'pending' && link.delivery === 'email' ? (
+          {link.state === 'pending' ? (
             <div className="request-link-share">
-              <p className="hint">
-                {link.recipientEmail}
-                へメールで送りました。相手がそのアドレスでログインすると開けます。
-              </p>
-              <div className="action-buttons">
-                <button className="quiet-button" disabled={busy} onClick={() => void reissue(link)}>
-                  メールを送り直す
-                </button>
-                <button className="text-button" disabled={busy} onClick={() => void withdraw(link)}>
-                  依頼を取り消す
-                </button>
-              </div>
-            </div>
-          ) : link.state === 'pending' ? (
-            <div className="request-link-share">
-              {urls[link.id] ? (
+              {link.delivery === 'self' && (
                 <>
-                  <label htmlFor={`link-${link.id}`}>依頼リンク</label>
-                  <div className="link-row">
-                    <input
-                      id={`link-${link.id}`}
-                      className="text-input"
-                      value={urls[link.id]}
-                      readOnly
-                      onFocus={(event) => event.target.select()}
-                    />
-                    <button
-                      className="quiet-button"
-                      disabled={busy}
-                      onClick={() => void copy(urls[link.id]!)}
-                    >
-                      コピー
-                    </button>
-                  </div>
+                  {urls[link.id] ? (
+                    <>
+                      <label htmlFor={`link-${link.id}`}>依頼リンク</label>
+                      <div className="link-row">
+                        <input
+                          id={`link-${link.id}`}
+                          className="text-input"
+                          value={urls[link.id]}
+                          readOnly
+                          onFocus={(event) => event.target.select()}
+                        />
+                        <button
+                          className="quiet-button"
+                          disabled={busy}
+                          onClick={() => void copy(urls[link.id]!)}
+                        >
+                          コピー
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="hint">共有するリンクが必要な場合は再発行してください。</p>
+                  )}
+                  <p className="hint">
+                    リンクを知っている人が開けます。相手だけに共有してください。
+                  </p>
                 </>
-              ) : (
-                <p className="hint">共有するリンクが必要な場合は再発行してください。</p>
               )}
-              <p className="hint">
-                相手だけに共有してください。リンクの作成だけでは通知は送られません。
-              </p>
-              <div className="action-buttons">
-                <button className="quiet-button" disabled={busy} onClick={() => void reissue(link)}>
-                  リンクを再発行
-                </button>
-                <button className="text-button" disabled={busy} onClick={() => void withdraw(link)}>
-                  依頼を取り消す
-                </button>
+              <div className="link-management">
+                <ConfirmAction
+                  label={link.delivery === 'email' ? 'メールを送り直す' : 'リンクを再発行'}
+                  question={
+                    link.delivery === 'email'
+                      ? '新しいリンクをメールで送りますか？'
+                      : 'リンクを再発行しますか？'
+                  }
+                  description={`${link.delivery === 'email' ? link.recipientEmail + 'へ送ります。' : ''}古いリンクは使えなくなります。期限は変わりません。`}
+                  busy={busy}
+                  onConfirm={() => reissue(link)}
+                />
+                <ConfirmAction
+                  label="取り消す"
+                  question="この依頼を取り消しますか？"
+                  description="リンクを無効にし、支払確保を解除します。"
+                  busy={busy}
+                  onConfirm={() => withdraw(link)}
+                />
               </div>
             </div>
+          ) : link.requestId ? (
+            <Link className="quiet-button" href={`/me/requests/${link.requestId}`}>
+              依頼を開く
+            </Link>
           ) : (
             <p className="cancellation-note">
               {link.cancelledReason === 'declined'
@@ -268,8 +265,18 @@ export function RequestLinks({
             </p>
           )}
         </article>
-      ))}
+      ) : (
+        <p className="empty-state">依頼が見つかりません</p>
+      )}
     </div>
+  );
+}
+
+export function LinkStatus({ link }: { link: RequestLinkView }) {
+  return (
+    <span className={`status status-${link.state}`}>
+      {link.state === 'pending' ? '受諾待ち' : link.state === 'accepted' ? '受諾済み' : '受付終了'}
+    </span>
   );
 }
 
@@ -288,10 +295,8 @@ export function RequestLinkLanding({
   const [authenticate, setAuthenticate] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [declined, setDeclined] = useState(false);
-  const [confirmingDecline, setConfirmingDecline] = useState(false);
   const [loginRequired, setLoginRequired] = useState(false);
   const [blocked, setBlocked] = useState<boolean | null>(null);
-  const declineButton = useRef<HTMLButtonElement>(null);
   const actions = useLinkActions();
   async function load() {
     setLink(null);
@@ -347,10 +352,6 @@ export function RequestLinkLanding({
       setDeclined(true);
     });
   }
-  function cancelDecline() {
-    setConfirmingDecline(false);
-    requestAnimationFrame(() => declineButton.current?.focus());
-  }
   return (
     <>
       <div className="demo-banner">
@@ -384,7 +385,7 @@ export function RequestLinkLanding({
           {declined && (
             <div className="request-detail" role="status">
               <h2>依頼を見送りました</h2>
-              <p className="account-copy">支払確保を解除しました。ご確認ありがとうございました。</p>
+              <p className="account-copy">支払確保を解除しました。</p>
               {blocked && <p className="hint">今後、メールでの依頼は届きません。</p>}
               <a href="/">ホームへ</a>
             </div>
@@ -405,13 +406,9 @@ export function RequestLinkLanding({
           {link && (
             <article className="request-detail" aria-label="依頼">
               <div className="detail-heading">
-                <h1>依頼</h1>
-                <span className="status">
-                  <i />
-                  {link.state === 'accepted' ? '受諾済み' : '受諾待ち'}
-                </span>
+                <h1>{link.clientName}から</h1>
+                <LinkStatus link={link} />
               </div>
-              <p className="detail-parties">{link.clientName}からの依頼</p>
               <LinkFacts link={link} />
               {link.state === 'pending' && (
                 <div className="detail-actions">
@@ -451,7 +448,7 @@ export function RequestLinkLanding({
                         disabled={actions.busy || !agreed}
                         onClick={() => void accept()}
                       >
-                        この依頼を受ける
+                        受ける
                         <Arrow />
                       </button>
                     </>
@@ -472,52 +469,18 @@ export function RequestLinkLanding({
                       disabled={actions.busy}
                       onClick={() => void accept()}
                     >
-                      受諾へ進む
+                      受ける
                       <Arrow />
                     </button>
                   )}
-                  {confirmingDecline ? (
-                    <div
-                      className="decline-confirmation"
-                      role="group"
-                      aria-labelledby="decline-question"
-                      aria-busy={actions.busy}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Escape' && !actions.busy) {
-                          event.preventDefault();
-                          cancelDecline();
-                        }
-                      }}
-                    >
-                      <p id="decline-question">この依頼を見送りますか？</p>
-                      <div className="action-buttons">
-                        <button
-                          className="quiet-button"
-                          disabled={actions.busy}
-                          autoFocus
-                          onClick={cancelDecline}
-                        >
-                          戻る
-                        </button>
-                        <button
-                          className="quiet-button confirm-decline"
-                          disabled={actions.busy}
-                          onClick={() => void decline()}
-                        >
-                          見送る
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      ref={declineButton}
-                      className="text-button decline-link"
-                      disabled={actions.busy}
-                      onClick={() => setConfirmingDecline(true)}
-                    >
-                      この依頼を見送る
-                    </button>
-                  )}
+                  <div className="decline-link">
+                    <ConfirmAction
+                      label="見送る"
+                      question="この依頼を見送りますか？"
+                      busy={actions.busy}
+                      onConfirm={decline}
+                    />
+                  </div>
                 </div>
               )}
               {link.requestId && (
