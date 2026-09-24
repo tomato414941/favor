@@ -12,14 +12,14 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 1 && (version !== 0 || initialized)) {
+    if (version !== 2 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 1 before starting the application.',
+        'Unsupported database schema. Prepare schema version 2 before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 1) return;
+    if (version === 2) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
@@ -66,9 +66,12 @@ export class Store {
         expires_at INTEGER NOT NULL,
         FOREIGN KEY (provider, subject) REFERENCES social_accounts(provider, subject)
       ) STRICT;
-      CREATE TABLE local_credentials (
-        email TEXT PRIMARY KEY, subject TEXT NOT NULL UNIQUE,
-        salt TEXT NOT NULL, password_hash TEXT NOT NULL
+      CREATE TABLE email_accounts (
+        email TEXT PRIMARY KEY, subject TEXT NOT NULL UNIQUE
+      ) STRICT;
+      CREATE TABLE email_challenges (
+        token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL,
+        expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
       ) STRICT;
       CREATE TABLE request_links (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
@@ -100,7 +103,7 @@ export class Store {
         id INTEGER PRIMARY KEY, link_id TEXT NOT NULL REFERENCES request_links(id),
         actor_id TEXT NOT NULL, action TEXT NOT NULL, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 1;
+      PRAGMA user_version = 2;
     `),
     );
   }

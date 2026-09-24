@@ -3,28 +3,44 @@ import assert from 'node:assert/strict';
 import { buildApp } from '../src/server/app.js';
 import { CommissionService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
+import { Mailbox } from './mailbox.js';
 
 const publicOrigin = 'https://commission.example';
 const headers = { host: 'commission.example', origin: publicOrigin, 'x-commission-action': '1' };
 
 test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCookieと送信元の確認を適用する', async () => {
   const store = new Store();
+  const mailbox = new Mailbox();
   const app = await buildApp(new CommissionService(store), {
-    localAuth: true,
+    emailDelivery: mailbox.deliver,
     publicOrigin,
     trustLoopbackProxy: true,
   });
   const credentials = {
     email: 'public-recipient@example.test',
-    password: 'private-https-test-password',
   };
   try {
-    const registered = await app.inject({
-      method: 'POST',
-      url: '/api/auth/local/register',
-      headers,
-      payload: credentials,
-    });
+    const loginByEmail = async () => {
+      const started = await app.inject({
+        method: 'POST',
+        url: '/api/auth/email/start',
+        headers,
+        payload: credentials,
+      });
+      assert.equal(started.statusCode, 200);
+      const flow = started.cookies.find((entry) => entry.name === '__Host-commission_email')!;
+      assert.equal(flow.httpOnly, true);
+      assert.equal(flow.secure, true);
+      assert.equal(flow.sameSite, 'Strict');
+      assert.equal(flow.path, '/');
+      return app.inject({
+        method: 'POST',
+        url: '/api/auth/email/verify',
+        headers: { ...headers, cookie: `${flow.name}=${flow.value}` },
+        payload: { code: mailbox.code(credentials.email) },
+      });
+    };
+    const registered = await loginByEmail();
     assert.equal(registered.statusCode, 200);
     const session = registered.cookies.find((entry) => entry.name === '__Host-commission_session')!;
     assert.equal(session.secure, true);
@@ -50,7 +66,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
         (
           await app.inject({
             method: 'POST',
-            url: '/api/auth/local/login',
+            url: '/api/auth/email/start',
             headers: changedHeaders,
             payload: credentials,
           })
@@ -69,14 +85,12 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
       (await app.inject({ url: '/api/auth/identity', headers: { ...headers, cookie } })).json(),
       null,
     );
-    const login = await app.inject({
-      method: 'POST',
-      url: '/api/auth/local/login',
-      headers,
-      payload: credentials,
-    });
+    const login = await loginByEmail();
     assert.equal(login.statusCode, 200);
-    assert.equal(login.cookies[0]!.secure, true);
+    assert.equal(
+      login.cookies.find((entry) => entry.name === '__Host-commission_session')!.secure,
+      true,
+    );
   } finally {
     await app.close();
     store.close();
@@ -85,6 +99,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
 
 test('公開URLにHTTPSを要求し、固定アカウントの体験モードをループバックに限定する', async () => {
   const store = new Store();
+  const mailbox = new Mailbox();
   const service = new CommissionService(store);
   try {
     for (const value of [
@@ -95,7 +110,7 @@ test('公開URLにHTTPSを要求し、固定アカウントの体験モードを
       'https://user:pass@commission.example',
     ]) {
       await assert.rejects(
-        buildApp(service, { localAuth: true, publicOrigin: value }),
+        buildApp(service, { emailDelivery: mailbox.deliver, publicOrigin: value }),
         /COMMISSION_PUBLIC_ORIGIN/,
       );
     }
@@ -120,26 +135,27 @@ test('公開URLにHTTPSを要求し、固定アカウントの体験モードを
 
 test('同じ端末の認証試行を制限し、信頼するプロキシ経由の別端末には試行を許可する', async () => {
   const store = new Store();
+  const mailbox = new Mailbox();
   const app = await buildApp(new CommissionService(store), {
-    localAuth: true,
+    emailDelivery: mailbox.deliver,
     publicOrigin,
     trustLoopbackProxy: true,
   });
   const attempt = (remoteAddress: string, forwarded: string) =>
     app.inject({
       method: 'POST',
-      url: '/api/auth/local/login',
+      url: '/api/auth/email/start',
       remoteAddress,
       headers: { ...headers, 'x-forwarded-for': forwarded },
-      payload: { email: 'invalid-email', password: 'private-https-test-password' },
+      payload: { email: 'invalid-email' },
     });
   try {
     for (let i = 0; i < 30; i++)
-      assert.equal((await attempt('127.0.0.1', '192.0.2.10')).statusCode, 401);
+      assert.equal((await attempt('127.0.0.1', '192.0.2.10')).statusCode, 400);
     assert.equal((await attempt('127.0.0.1', '192.0.2.10')).statusCode, 429);
-    assert.equal((await attempt('127.0.0.1', '192.0.2.11')).statusCode, 401);
+    assert.equal((await attempt('127.0.0.1', '192.0.2.11')).statusCode, 400);
     for (let i = 0; i < 30; i++)
-      assert.equal((await attempt('192.0.2.12', `198.51.100.${i + 1}`)).statusCode, 401);
+      assert.equal((await attempt('192.0.2.12', `198.51.100.${i + 1}`)).statusCode, 400);
     assert.equal((await attempt('192.0.2.12', '198.51.100.100')).statusCode, 429);
   } finally {
     await app.close();

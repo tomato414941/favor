@@ -1,5 +1,7 @@
 """Exercise private request links with independent sender/recipient browser sessions."""
 import os
+import hashlib
+import json
 from pathlib import Path
 import re
 import secrets
@@ -19,7 +21,6 @@ def main():
     run_id = secrets.token_hex(6)
     sender_email = f'aoba_{run_id}@example.test'
     receiver_email = f'mio_{run_id}@example.test'
-    password = secrets.token_urlsafe(24)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         contexts = []
@@ -45,10 +46,14 @@ def main():
                 assert phrase not in body, phrase
 
         def register(page, email):
-            form = page.get_by_role('form', name='アカウント登録')
+            form = page.get_by_role('form', name='メールでログイン')
             form.get_by_label('メールアドレス', exact=True).fill(email)
-            form.get_by_label('パスワード', exact=True).fill(password)
-            form.get_by_role('button', name='登録する', exact=True).click()
+            form.get_by_role('button', name='確認コードを送る', exact=True).click()
+            expect(form.get_by_label('確認コード', exact=True)).to_be_visible()
+            layout(page, 'verification')
+            mail = Path(os.environ['COMMISSION_TEST_MAIL_DIR']) / (hashlib.sha256(email.strip().lower().encode()).hexdigest() + '.json')
+            form.get_by_label('確認コード', exact=True).fill(json.loads(mail.read_text())['code'])
+            form.get_by_role('button', name='ログイン', exact=True).click()
 
         def compose(page, brief):
             page.get_by_role('navigation').get_by_role('button', name='依頼を作る', exact=True).click()
@@ -71,7 +76,7 @@ def main():
         visiting = visitor.new_page()
         try:
             page.goto(base)
-            expect(page.get_by_role('heading', name='アカウント', exact=True)).to_be_visible()
+            expect(page.get_by_role('heading', name='ログイン', exact=True)).to_be_visible()
             layout(page, 'registration')
             register(page, sender_email)
             expect(page.get_by_role('heading', name='依頼リンクを作成')).to_be_visible()
@@ -124,7 +129,7 @@ def main():
             layout(receiving, 'unregistered-reader')
 
             receiving.get_by_role('button', name='受諾へ進む', exact=True).click()
-            expect(receiving.get_by_role('form', name='アカウント登録')).to_be_visible()
+            expect(receiving.get_by_role('form', name='メールでログイン')).to_be_visible()
             layout(receiving, 'recipient-registration')
             register(receiving, receiver_email)
             expect(detail).to_contain_text(f'{receiver_email}として受け取ります')
@@ -176,12 +181,8 @@ def main():
             layout(page, 'download')
 
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
-            receiving.get_by_role('button', name='ログイン', exact=True).click()
-            login_form = receiving.get_by_role('form', name='ログイン', exact=True)
-            login_form.get_by_label('メールアドレス', exact=True).fill(receiver_email.upper())
-            login_form.get_by_label('パスワード', exact=True).fill(password)
             layout(receiving, 'email-login')
-            login_form.get_by_role('button', name='ログインする').click()
+            register(receiving, receiver_email.upper())
             receiving.get_by_role('navigation').get_by_role('button', name='依頼一覧', exact=True).click()
             expect(receiving.get_by_role('article', name='依頼の詳細')).to_contain_text('第2版')
 
@@ -232,7 +233,7 @@ def main():
                 assert all(token not in request.headers.get('referer', '') for token in tokens)
                 assert request.url.startswith(base), request.url
             assert not runtime_errors, runtime_errors
-            print('PASS: メール登録・ログイン、秘密リンク作成・再試行・共有、未登録閲覧、受諾の再試行、専用化、納品・再納品・ダウンロード、辞退・再発行・取消、PC・スマホ表示を確認する')
+            print('PASS: メール確認・ログイン、秘密リンク作成・再試行・共有、未登録閲覧、受諾の再試行、専用化、納品・再納品・ダウンロード、辞退・再発行・取消、PC・スマホ表示を確認する')
             print(f'Screenshots: {artifacts}')
         except Exception:
             for i, item in enumerate([page, receiving, visiting]):

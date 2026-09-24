@@ -1,5 +1,6 @@
 """別サイトから親ドメインにCookieを設定されても、本人の認証と依頼の所有権を保持する。"""
 import http.cookies
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,8 +26,8 @@ def main():
     backend = f'http://127.0.0.1:{port}'
     with tempfile.TemporaryDirectory(prefix='commission-cookie-isolation-') as data:
         environment = {**os.environ, 'COMMISSION_PUBLIC_ORIGIN': origin, 'COMMISSION_PORT': str(port),
-                       'COMMISSION_DATA_DIR': data, 'COMMISSION_AUTH_MODE': 'local', 'COMMISSION_TRUST_PROXY': 'none'}
-        server = subprocess.Popen([shutil.which('node'), 'dist/server/server/main.js', '--demo'],
+                       'COMMISSION_DATA_DIR': data, 'COMMISSION_AUTH_MODE': 'email', 'COMMISSION_TRUST_PROXY': 'none'}
+        server = subprocess.Popen([shutil.which('node'), '--import', 'tsx', 'tests/browser_email_server.ts'],
                                   cwd=Path(__file__).resolve().parents[1], env=environment,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -49,10 +50,19 @@ def main():
                     time.sleep(0.1)
             else:
                 raise AssertionError('Cookie isolation test server did not start')
-            with api('/api/auth/local/register', {'email': 'other@example.test', 'password': secrets.token_urlsafe(24)}) as response:
+            def code(email):
+                mail = Path(data) / 'mail' / (hashlib.sha256(email.encode()).hexdigest() + '.json')
+                return json.loads(mail.read_text())['code']
+
+            with api('/api/auth/email/start', {'email': 'other@example.test'}) as response:
                 parsed = http.cookies.SimpleCookie()
                 parsed.load(response.headers['Set-Cookie'])
-                cookie_name = next(iter(parsed))
+                proof = '; '.join(f'{name}={item.value}' for name, item in parsed.items())
+            with api('/api/auth/email/verify', {'code': code('other@example.test')}, proof) as response:
+                parsed = http.cookies.SimpleCookie()
+                for value in response.headers.get_all('Set-Cookie'):
+                    parsed.load(value)
+                cookie_name = '__Host-commission_session'
                 other_session = parsed[cookie_name].value
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(headless=True)
@@ -85,7 +95,7 @@ def main():
                 page = context.new_page()
                 page.goto(origin)
                 page.wait_for_load_state('networkidle')
-                credentials = {'email': 'original@example.test', 'password': secrets.token_urlsafe(24)}
+                credentials = {'email': 'original@example.test'}
 
                 def post(path, body):
                     return page.evaluate('''async ({path, body}) => {
@@ -94,7 +104,8 @@ def main():
                         return {status: response.status, body: await response.json()};
                     }''', {'path': path, 'body': body})
 
-                registration = post('/api/auth/local/register', credentials)
+                assert post('/api/auth/email/start', credentials)['status'] == 200
+                registration = post('/api/auth/email/verify', {'code': code(credentials['email'])})
                 assert registration['status'] == 200
                 original_cookie = next(cookie for cookie in context.cookies() if cookie['name'] == cookie_name)
                 page.goto(other_origin)
@@ -118,7 +129,8 @@ def main():
                     assert json.load(response)['links'] == []
                 assert post('/api/auth/logout', {})['status'] == 200
                 assert page.evaluate("async () => (await fetch('/api/auth/identity')).json()") is None
-                logged_in = post('/api/auth/local/login', credentials)
+                assert post('/api/auth/email/start', credentials)['status'] == 200
+                logged_in = post('/api/auth/email/verify', {'code': code(credentials['email'])})
                 assert logged_in['status'] == 200
                 assert logged_in['body']['email'] == credentials['email']
                 assert not unexpected_origins, unexpected_origins

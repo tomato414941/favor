@@ -54,13 +54,9 @@ export interface IdentitySession {
   email?: string;
 }
 export interface AuthOptions {
-  mode: 'local' | 'demo' | 'x' | 'disabled';
+  mode: 'email' | 'demo' | 'x' | 'disabled';
   xLogin: boolean;
-  localLogin?: boolean;
-}
-export interface LocalCredentials {
-  email: string;
-  password: string;
+  emailLogin?: boolean;
 }
 export type RequestLinkState = 'pending' | 'accepted' | 'cancelled';
 export interface RequestLinkView {

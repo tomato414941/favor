@@ -51,7 +51,7 @@ export class AuthService {
   constructor(
     readonly store: Store,
     readonly clock: () => number = Date.now,
-    readonly options: { allowDemo?: boolean; allowX?: boolean; allowLocal?: boolean } = {},
+    readonly options: { allowDemo?: boolean; allowX?: boolean; allowEmail?: boolean } = {},
   ) {}
 
   limit(bucket: string, maximum = 30) {
@@ -76,44 +76,31 @@ export class AuthService {
     });
   }
 
-  createLocal(input: { email: string; salt: string; passwordHash: string }): string {
-    if (!this.options.allowLocal)
-      throw new DomainError('AUTH_DISABLED', 'アカウントの登録は利用できません。', 403);
+  /** Called only after the mailbox has been verified by EmailAuth. */
+  emailSession(email: string): string {
+    if (!this.options.allowEmail)
+      throw new DomainError('AUTH_DISABLED', 'メールでのログインは利用できません。', 403);
     return this.store.transaction(() => {
-      if (this.store.db.prepare('SELECT 1 FROM local_credentials WHERE email = ?').get(input.email))
-        throw new DomainError(
-          'EMAIL_TAKEN',
-          'このメールアドレスは登録済みです。ログインしてください。',
-        );
-      const subject = randomUUID();
-      const handle = `user_${subject.replaceAll('-', '')}`;
-      const name = `ユーザー ${subject.slice(0, 8)}`;
-      this.store.db
-        .prepare('INSERT INTO local_credentials VALUES (?, ?, ?, ?)')
-        .run(input.email, subject, input.salt, input.passwordHash);
-      this.store.db
-        .prepare(
-          "INSERT INTO social_accounts (provider, subject, handle, name) VALUES ('local', ?, ?, ?)",
-        )
-        .run(subject, handle, name);
-      const token = this.localSession(subject);
+      let row = this.store.db
+        .prepare('SELECT subject FROM email_accounts WHERE email = ?')
+        .get(email);
+      if (!row) {
+        const subject = randomUUID();
+        this.store.db.prepare('INSERT INTO email_accounts VALUES (?, ?)').run(email, subject);
+        this.store.db
+          .prepare(
+            "INSERT INTO social_accounts (provider, subject, handle, name) VALUES ('email', ?, ?, ?)",
+          )
+          .run(subject, `user_${subject.replaceAll('-', '')}`, `ユーザー ${subject.slice(0, 8)}`);
+        row = { subject };
+      }
+      const account = this.store.db
+        .prepare("SELECT * FROM social_accounts WHERE provider = 'email' AND subject = ?")
+        .get(row.subject!) as unknown as AccountRow;
+      const token = this.issueSession(account);
       this.registerAccount(token);
       return token;
     });
-  }
-
-  localSession(subject: string): string {
-    if (!this.options.allowLocal)
-      throw new DomainError('AUTH_DISABLED', 'ログインは利用できません。', 403);
-    const row = this.store.db
-      .prepare(
-        `SELECT a.* FROM social_accounts a JOIN local_credentials c ON c.subject = a.subject
-      WHERE a.provider = 'local' AND a.subject = ? AND instr(c.email, '@') > 1`,
-      )
-      .get(subject) as unknown as AccountRow | undefined;
-    if (!row)
-      throw new DomainError('UNAUTHORIZED', 'メールアドレスとパスワードを確認してください。', 401);
-    return this.issueSession(row);
   }
 
   private requireDemo() {
@@ -180,7 +167,7 @@ export class AuthService {
       .prepare(
         `SELECT a.*, c.email AS email FROM sessions s JOIN social_accounts a
       ON a.provider = s.provider AND a.subject = s.subject
-      LEFT JOIN local_credentials c ON a.provider = 'local' AND c.subject = a.subject
+      LEFT JOIN email_accounts c ON a.provider = 'email' AND c.subject = a.subject
       WHERE s.token_hash = ? AND s.expires_at > ?`,
       )
       .get(hashToken(token), this.clock()) as unknown as
@@ -190,9 +177,9 @@ export class AuthService {
       throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     if (row.provider === 'x' && this.options.allowX !== true)
       throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
-    if (row.provider === 'local' && (this.options.allowLocal !== true || !row.email?.includes('@')))
+    if (row.provider === 'email' && (this.options.allowEmail !== true || !row.email?.includes('@')))
       throw new DomainError('UNAUTHORIZED', 'ログインし直してください。', 401);
-    if (!['demo', 'x', 'local'].includes(row.provider))
+    if (!['demo', 'x', 'email'].includes(row.provider))
       throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
     return row;
   }
@@ -202,7 +189,7 @@ export class AuthService {
     return {
       account,
       registered: userId !== null,
-      ...(account.provider === 'local' ? { email: email! } : {}),
+      ...(account.provider === 'email' ? { email: email! } : {}),
     };
   }
   actor(token: string | undefined): string {

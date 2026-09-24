@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import type { AuthOptions, IdentitySession } from '../src/shared';
 import { api } from './api';
 import { Arrow } from './ui';
@@ -108,26 +108,29 @@ export function XLoginButton({
   );
 }
 
-export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<void> }) {
-  const [mode, setMode] = useState<'register' | 'login'>('register');
-  const register = mode === 'register';
+export function EmailLoginForm({ onChange }: { onChange: () => void | Promise<void> }) {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const locked = useRef(false);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(verify: boolean) {
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
     setError('');
     try {
-      await api(`/auth/local/${mode}`, {
-        body: { email, password },
-      });
-      setPassword('');
-      await onChange();
+      if (verify) {
+        await api('/auth/email/verify', { body: { code } });
+        setCode('');
+        await onChange();
+      } else {
+        await api('/auth/email/start', { body: { email } });
+        setEmail(email.trim().toLowerCase());
+        setCode('');
+        setSent(true);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '操作を完了できませんでした。');
     } finally {
@@ -137,76 +140,83 @@ export function LocalAccountForm({ onChange }: { onChange: () => void | Promise<
   }
   return (
     <form
-      className="local-account-form"
-      onSubmit={(event) => void submit(event)}
-      aria-label={register ? 'アカウント登録' : 'ログイン'}
+      className="email-login-form"
+      aria-label="メールでログイン"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit(sent);
+      }}
     >
-      <div className="account-tabs">
-        <button
-          type="button"
-          aria-pressed={register}
-          disabled={busy}
-          onClick={() => {
-            setMode('register');
-            setPassword('');
-            setError('');
-          }}
-        >
-          新規登録
-        </button>
-        <button
-          type="button"
-          aria-pressed={!register}
-          disabled={busy}
-          onClick={() => {
-            setMode('login');
-            setPassword('');
-            setError('');
-          }}
-        >
-          ログイン
-        </button>
-      </div>
       <fieldset disabled={busy} className="account-fields">
-        <div className="field">
-          <label htmlFor="account-email">メールアドレス</label>
-          <input
-            id="account-email"
-            className="text-input"
-            type="email"
-            inputMode="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="username"
-            autoCapitalize="none"
-            spellCheck={false}
-            maxLength={254}
-            required
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="account-password">パスワード</label>
-          <input
-            id="account-password"
-            className="text-input"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete={register ? 'new-password' : 'current-password'}
-            minLength={12}
-            maxLength={1024}
-            required
-          />
-          {register && <p className="hint">12文字以上</p>}
-        </div>
+        {sent ? (
+          <>
+            <p role="status">{email} に確認コードを送りました</p>
+            <div className="field">
+              <label htmlFor="account-code">確認コード</label>
+              <input
+                key="code"
+                id="account-code"
+                className="text-input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(event) =>
+                  setCode(event.target.value.normalize('NFKC').replace(/\s/g, ''))
+                }
+                pattern="[0-9]{8}"
+                minLength={8}
+                maxLength={8}
+                autoFocus
+                required
+              />
+            </div>
+          </>
+        ) : (
+          <div className="field">
+            <label htmlFor="account-email">メールアドレス</label>
+            <input
+              key="email"
+              id="account-email"
+              className="text-input"
+              type="email"
+              inputMode="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              maxLength={254}
+              required
+            />
+          </div>
+        )}
         {error && (
           <p className="inline-error" role="alert">
             {error}
           </p>
         )}
         <button className="primary" disabled={busy}>
-          {busy ? '処理しています…' : register ? '登録する' : 'ログインする'}
+          {busy ? '処理しています…' : sent ? 'ログイン' : '確認コードを送る'}
         </button>
+        {sent && (
+          <div className="action-buttons">
+            <button type="button" className="text-button" onClick={() => void submit(false)}>
+              再送する
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setSent(false);
+                setCode('');
+                setError('');
+              }}
+            >
+              メールアドレスを変える
+            </button>
+          </div>
+        )}
       </fieldset>
     </form>
   );
@@ -251,7 +261,7 @@ export function AccountEntry({
       </header>
       <main className="shell account-layout">
         <section className="account-panel" aria-label={identity ? 'サービスへの登録' : 'ログイン'}>
-          <h1>{identity ? '登録内容の確認' : options.localLogin ? 'アカウント' : 'ログイン'}</h1>
+          <h1>{identity ? '登録内容の確認' : 'ログイン'}</h1>
           {error && (
             <p className="inline-error" role="alert">
               {error}
@@ -272,9 +282,9 @@ export function AccountEntry({
                 <Arrow />
               </button>
             </>
-          ) : options.localLogin ? (
+          ) : options.emailLogin ? (
             <>
-              <LocalAccountForm onChange={onChange} />
+              <EmailLoginForm onChange={onChange} />
               {options.xLogin && <XLoginButton />}
             </>
           ) : (

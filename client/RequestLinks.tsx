@@ -8,7 +8,7 @@ import type {
 } from '../src/shared';
 import { paymentLabels } from '../src/shared';
 import { api } from './api';
-import { LocalAccountForm, XLoginButton } from './Auth';
+import { EmailLoginForm, XLoginButton } from './Auth';
 import { RequestForm, type RequestFormSettings } from './RequestForm';
 import { Arrow } from './ui';
 
@@ -480,8 +480,8 @@ export function RequestLinkLanding({
                   ) : authenticate ? (
                     <section className="link-registration" aria-label="受け取るアカウント">
                       <h3>受け取るアカウント</h3>
-                      {options.localLogin ? (
-                        <LocalAccountForm onChange={load} />
+                      {options.emailLogin ? (
+                        <EmailLoginForm onChange={load} />
                       ) : options.xLogin ? (
                         <XLoginButton />
                       ) : (

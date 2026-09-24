@@ -575,33 +575,11 @@ textarea:focus {
   font-size: 12px;
   line-height: 1.9;
 }
-.local-account-form {
+.email-login-form {
   margin-top: 23px;
 }
-.account-tabs {
-  display: flex;
-  gap: 28px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 23px;
-}
-.account-tabs button {
-  position: relative;
-  padding: 0 1px 11px;
-  background: none;
-  color: var(--muted);
-  font-size: 13px;
-}
-.account-tabs button[aria-pressed='true'] {
-  color: var(--ink);
-  font-weight: 600;
-}
-.account-tabs button[aria-pressed='true']::after {
-  position: absolute;
-  content: '';
-  inset-inline: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--ink);
+.email-login-form [role='status'] {
+  overflow-wrap: anywhere;
 }
 .account-fields {
   display: grid;
@@ -611,17 +589,17 @@ textarea:focus {
 .account-fields .inline-error {
   margin: 0;
 }
-.local-account-form .field label {
+.email-login-form .field label {
   display: block;
   margin-bottom: 7px;
   font-size: 12px;
   font-weight: 600;
 }
-.local-account-form .hint {
+.email-login-form .hint {
   font-size: 11px;
 }
 .account-panel .primary,
-.local-account-form .primary {
+.email-login-form .primary {
   width: 100%;
 }
 .registration-identity {

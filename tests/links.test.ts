@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
-import { LocalAuth } from '../src/server/local-auth.js';
+import { Mailbox } from './mailbox.js';
 import { CommissionService, DomainError } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { buildApp } from '../src/server/app.js';
@@ -27,7 +27,7 @@ function setup(mock: ConstructorParameters<typeof CommissionService>[3] = {}) {
   const store = new Store();
   const clock = () => now;
   const service = new CommissionService(store, clock, {}, mock);
-  const auth = new AuthService(store, clock, { allowDemo: true, allowLocal: true });
+  const auth = new AuthService(store, clock, { allowDemo: true, allowEmail: true });
   const links = new RequestLinkService(service, auth);
   auth.demoLogin('client');
   const recipientSession = auth.demoLogin('recipient');
@@ -247,20 +247,26 @@ test('宛先未指定の依頼にも作成件数の制限を適用する', () =>
 
 test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を確認する', async () => {
   const store = new Store();
-  const app = await buildApp(new CommissionService(store), { localAuth: true });
+  const mailbox = new Mailbox();
+  const app = await buildApp(new CommissionService(store), { emailDelivery: mailbox.deliver });
   const headers = { 'x-commission-action': '1' };
   const register = async (name: string) => {
+    const email = `${name}@example.test`;
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/auth/email/start',
+      headers,
+      payload: { email },
+    });
+    assert.equal(started.statusCode, 200);
     const response = await app.inject({
       method: 'POST',
-      url: '/api/auth/local/register',
-      headers,
-      payload: {
-        email: `${name}@example.test`,
-        password: 'long-password-for-test',
-      },
+      url: '/api/auth/email/verify',
+      headers: { ...headers, cookie: `commission_email=${started.cookies[0]!.value}` },
+      payload: { code: mailbox.code(email) },
     });
     assert.equal(response.statusCode, 200);
-    return String(response.headers['set-cookie']).split(';')[0]!;
+    return `commission_session=${response.cookies.find((cookie) => cookie.name === 'commission_session')!.value}`;
   };
   try {
     const sender = await register('link_sender');
@@ -341,87 +347,34 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
   }
 });
 
-test('アカウントを再起動後も使い、ログイン・ログアウト・セッション期限を確認する', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'commission-local-auth-'));
+test('メール確認したアカウントを再起動後も使い、再ログインとセッション期限を確認する', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'commission-email-auth-'));
   const path = join(directory, 'test.sqlite');
   let now = 1_800_000_000_000;
   let store = new Store(path);
+  const mailbox = new Mailbox();
   const clock = () => now;
   try {
-    let auth = new AuthService(store, clock, { allowLocal: true });
-    let local = new LocalAuth(auth);
-    const input = {
-      email: ' Aoba+Art@Example.TEST ',
-      password: 'correct-horse-battery',
-    };
-    const token = await local.register(input);
+    let auth = new AuthService(store, clock, { allowEmail: true });
+    const email = ' Aoba+Art@Example.TEST ';
+    const token = await mailbox.login(auth, email);
     const user = auth.actor(token);
     assert.equal(auth.identity(token).email, 'aoba+art@example.test');
     store.close();
     store = new Store(path);
-    auth = new AuthService(store, clock, { allowLocal: true });
-    local = new LocalAuth(auth);
+    auth = new AuthService(store, clock, { allowEmail: true });
     assert.equal(auth.actor(token), user);
-    await assert.rejects(
-      local.login({ email: 'aoba+art@example.test', password: 'incorrect-password' }),
-      errorCode('UNAUTHORIZED'),
-    );
-    assert.equal(auth.actor(token), user);
-    const rotated = await local.login(input, token);
+    const rotated = await mailbox.login(auth, email, token);
     assert.equal(auth.actor(rotated), user);
     assert.throws(() => auth.actor(token), errorCode('UNAUTHORIZED'));
     auth.logout(rotated);
     assert.throws(() => auth.actor(rotated), errorCode('UNAUTHORIZED'));
-    const next = await local.login(input);
+    const next = await mailbox.login(auth, email);
+    assert.equal(auth.actor(next), user);
     now += 86_400_000;
     assert.throws(() => auth.actor(next), errorCode('UNAUTHORIZED'));
-    await assert.rejects(
-      local.register({ ...input, email: 'aoba+art@example.test' }),
-      errorCode('EMAIL_TAKEN'),
-    );
   } finally {
     store.close();
     rmSync(directory, { recursive: true });
-  }
-});
-
-test('登録の入力とログイン試行の上限を検証する', async () => {
-  const s = setup();
-  const local = new LocalAuth(s.auth);
-  const account = {
-    email: 'recipient@example.test',
-    password: 'long-password-for-test',
-  };
-  try {
-    await assert.rejects(
-      local.register({ ...account, password: 'short' }),
-      errorCode('INVALID_PASSWORD'),
-    );
-    for (const email of [
-      'not-an-email',
-      'two@@example.test',
-      '.leading@example.test',
-      'two..dots@example.test',
-      'a@-example.test',
-      'a@example-.test',
-      'a@local',
-      'a\nb@example.test',
-      `${'a'.repeat(65)}@example.test`,
-      `a@${'a'.repeat(64)}.test`,
-    ]) {
-      await assert.rejects(local.register({ ...account, email }), errorCode('INVALID_EMAIL'));
-    }
-    const registered = await local.register(account);
-    assert.equal(s.auth.identity(registered).registered, true);
-    for (let i = 0; i < 10; i++)
-      await assert.rejects(
-        local.login({ ...account, password: 'wrong-password-1234' }),
-        errorCode('UNAUTHORIZED'),
-      );
-    await assert.rejects(local.login(account), errorCode('AUTH_RATE_LIMIT'));
-    s.advance(600_000);
-    assert.equal(s.auth.actor(await local.login(account)), s.auth.actor(registered));
-  } finally {
-    s.store.close();
   }
 });

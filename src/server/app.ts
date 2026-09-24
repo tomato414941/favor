@@ -3,12 +3,12 @@ import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { LocalCredentials, RequestLinkInput, UploadInput } from '../shared.js';
+import type { RequestLinkInput, UploadInput } from '../shared.js';
 import { CommissionService, DomainError } from './service.js';
 import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { RequestLinkService } from './request-links.js';
 import { XAuth, XProvider } from './x-auth.js';
-import { LocalAuth } from './local-auth.js';
+import { EmailAuth, type EmailDelivery } from './email-auth.js';
 import { parsePublicOrigin } from './public-origin.js';
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
@@ -16,7 +16,7 @@ interface AppOptions {
   staticRoot?: string;
   logger?: boolean;
   demoAuth?: boolean;
-  localAuth?: boolean;
+  emailDelivery?: EmailDelivery;
   xProvider?: XProvider;
   publicOrigin?: string;
   trustLoopbackProxy?: boolean;
@@ -45,13 +45,14 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   const auth = new AuthService(service.store, service.clock, {
     allowDemo: options.demoAuth === true,
     allowX: Boolean(options.xProvider),
-    allowLocal: options.localAuth === true,
+    allowEmail: Boolean(options.emailDelivery),
   });
-  const local = options.localAuth ? new LocalAuth(auth) : null;
+  const email = options.emailDelivery ? new EmailAuth(auth, options.emailDelivery) : null;
   const x = options.xProvider ? new XAuth(auth, options.xProvider) : null;
   const secureCookies = origin?.protocol === 'https:';
   // The browser rejects parent-domain cookies with a __Host- prefix.
   const sessionCookieName = secureCookies ? '__Host-commission_session' : 'commission_session';
+  const emailCookieName = secureCookies ? '__Host-commission_email' : 'commission_email';
   const flowCookieName = secureCookies ? '__Host-commission_oauth' : 'commission_oauth';
   const sessionCookie = {
     httpOnly: true,
@@ -135,36 +136,50 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     demoAuth: options.demoAuth === true,
   }));
   app.get('/api/auth/options', async () => ({
-    mode: x ? 'x' : options.demoAuth ? 'demo' : local ? 'local' : 'disabled',
+    mode: x ? 'x' : options.demoAuth ? 'demo' : email ? 'email' : 'disabled',
     xLogin: Boolean(x),
-    ...(local ? { localLogin: true } : {}),
+    ...(email ? { emailLogin: true } : {}),
   }));
-  if (local) {
-    const credentialsSchema = {
-      type: 'object',
-      additionalProperties: false,
-      required: ['email', 'password'],
-      properties: {
-        email: { type: 'string', minLength: 1, maxLength: 254 },
-        password: { type: 'string', minLength: 12, maxLength: 1024 },
+  if (email) {
+    app.post<{ Body: { email: string } }>(
+      '/api/auth/email/start',
+      {
+        schema: {
+          body: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['email'],
+            properties: { email: { type: 'string', minLength: 1, maxLength: 254 } },
+          },
+        },
       },
-    };
-    app.post<{ Body: LocalCredentials }>(
-      '/api/auth/local/register',
-      { schema: { body: credentialsSchema } },
       async (request, reply) => {
-        auth.limit(`local:${request.ip}`);
-        const token = await local.register(request.body, request.cookies[sessionCookieName]);
-        reply.setCookie(sessionCookieName, token, sessionCookie);
-        return auth.identity(token);
+        auth.limit(`email-start:${request.ip}`);
+        const challenge = await email.start(request.body.email, request.cookies[emailCookieName]);
+        reply.setCookie(emailCookieName, challenge, { ...sessionCookie, maxAge: 600 });
+        return { ok: true };
       },
     );
-    app.post<{ Body: LocalCredentials }>(
-      '/api/auth/local/login',
-      { schema: { body: credentialsSchema } },
+    app.post<{ Body: { code: string } }>(
+      '/api/auth/email/verify',
+      {
+        schema: {
+          body: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['code'],
+            properties: { code: { type: 'string', maxLength: 64 } },
+          },
+        },
+      },
       async (request, reply) => {
-        auth.limit(`local:${request.ip}`);
-        const token = await local.login(request.body, request.cookies[sessionCookieName]);
+        auth.limit(`email-verify:${request.ip}`, 30);
+        const token = email.verify(
+          request.cookies[emailCookieName],
+          request.body.code,
+          request.cookies[sessionCookieName],
+        );
+        reply.clearCookie(emailCookieName, sessionCookie);
         reply.setCookie(sessionCookieName, token, sessionCookie);
         return auth.identity(token);
       },
@@ -275,7 +290,9 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   });
   app.post('/api/auth/logout', async (request, reply) => {
     auth.logout(request.cookies[sessionCookieName]);
+    email?.cancel(request.cookies[emailCookieName]);
     x?.cancel(request.cookies[flowCookieName]);
+    reply.clearCookie(emailCookieName, sessionCookie);
     reply.clearCookie(sessionCookieName, sessionCookie);
     reply.clearCookie(flowCookieName, flowCookie);
     return { ok: true };
