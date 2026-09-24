@@ -55,9 +55,7 @@ function LinkFacts({ link }: { link: RequestLinkView }) {
   return (
     <>
       <div className="brief-block">
-        <div className="brief-label">
-          依頼内容 {link.nsfw && <span className="nsfw-label">閲覧注意</span>}
-        </div>
+        <div className="brief-label">依頼内容</div>
         <p>{link.brief}</p>
       </div>
       <dl className="detail-facts">

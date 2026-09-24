@@ -81,9 +81,7 @@ export function RequestDetail({
         </ol>
       )}
       <div className="brief-block">
-        <div className="brief-label">
-          依頼内容 {request.nsfw && <span className="nsfw-label">閲覧注意</span>}
-        </div>
+        <div className="brief-label">依頼内容</div>
         <p>{request.brief}</p>
       </div>
       <dl className="detail-facts">

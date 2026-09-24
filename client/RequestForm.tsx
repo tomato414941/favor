@@ -25,11 +25,10 @@ export function RequestForm({
   const [brief, setBrief] = useState('');
   const [amount, setAmount] = useState(String(terms.recommendedAmount));
   const [visibility, setVisibility] = useState<Visibility>('hidden');
-  const [nsfw, setNsfw] = useState(false);
   const [agreed, setAgreed] = useState(false);
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submit({ brief, amount: Number(amount), visibility, nsfw, agreeToRules: agreed });
+    await submit({ brief, amount: Number(amount), visibility, nsfw: false, agreeToRules: agreed });
   }
   return (
     <form className="request-form" onSubmit={(event) => void onSubmit(event)}>
@@ -112,14 +111,6 @@ export function RequestForm({
             あなたのSNSからリンクを送ると、相手にアカウントが伝わります。サービス内の匿名表示とは別です。
           </p>
         )}
-        <label className="checkbox-line">
-          <input
-            type="checkbox"
-            checked={nsfw}
-            onChange={(event) => setNsfw(event.target.checked)}
-          />
-          <span>成人向けなど、閲覧に注意が必要な内容を含む</span>
-        </label>
         <p className="payment-note">
           受諾期限は作成から{terms.acceptanceDays}日、納品期限は{terms.deliveryDays}日です。
           支払いはリンク作成時に確保し、相手の受諾時に確定します。
