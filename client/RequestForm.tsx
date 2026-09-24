@@ -35,7 +35,6 @@ export function RequestForm({
     <form className="request-form" onSubmit={(event) => void onSubmit(event)}>
       <div className="form-heading">
         <h2>依頼リンクを作成</h2>
-        <p>内容と金額を入力すると、相手に共有するリンクを作成できます。</p>
       </div>
       <fieldset disabled={busy} className="form-fields">
         <div className="field">
@@ -117,9 +116,6 @@ export function RequestForm({
             非表示でも、作り手によるSNS等での作品発表は制限しません。秘密保持や権利譲渡を意味しません。
           </p>
         </fieldset>
-        <p className="request-link-privacy-note">
-          受諾前の依頼内容・金額は、リンクを知っている人が閲覧できます。リンクは依頼する相手だけに渡してください。
-        </p>
         {visibility === 'anonymous' && (
           <p className="request-link-warning">
             あなたのSNSからリンクを送ると、相手にアカウントが伝わります。サービス内の匿名表示とは別です。
@@ -164,11 +160,6 @@ export function RequestForm({
           </p>
         </div>
         <div className="submit-row">
-          <span>
-            承認・納品の期限は
-            <br />
-            リンクの作成日から数えます。
-          </span>
           <button className="primary" type="submit" disabled={busy}>
             {busy ? '処理しています…' : '支払いを確保してリンク作成'}
             <Arrow />

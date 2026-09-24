@@ -463,15 +463,8 @@ textarea:focus {
 }
 .submit-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 18px;
+  justify-content: flex-end;
   margin-top: 24px;
-}
-.submit-row > span {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.8;
 }
 .primary {
   display: inline-flex;
@@ -1076,12 +1069,6 @@ nav .count {
   line-height: 1.85;
   margin-bottom: 22px;
 }
-.request-link-privacy-note {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.85;
-  margin: -6px 0 24px;
-}
 .request-link-landing {
   max-width: 680px;
   padding-top: 40px;
@@ -1155,12 +1142,8 @@ nav .count {
     padding-inline: 23px;
   }
   .submit-row {
-    align-items: stretch;
     flex-direction: column;
-    gap: 14px;
-  }
-  .submit-row br {
-    display: none;
+    align-items: stretch;
   }
   .requests-layout {
     grid-template-columns: 250px minmax(0, 1fr);
