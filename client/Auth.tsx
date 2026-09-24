@@ -257,7 +257,7 @@ export function AccountEntry({
       </div>
       <header className="header shell request-link-header">
         <a className="wordmark" href="/">
-          commission
+          Favor
         </a>
       </header>
       <main className="shell account-layout">
@@ -305,7 +305,7 @@ export function AccountEntry({
         </section>
       </main>
       <footer className="footer shell">
-        <span className="footer-brand">commission</span>
+        <span className="footer-brand">Favor</span>
       </footer>
     </>
   );

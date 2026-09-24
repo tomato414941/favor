@@ -147,8 +147,8 @@ export function Workspace({
         <span className="demo-mark">試用版</span>実際の支払いは発生しません
       </div>
       <header className="header shell">
-        <Link className="wordmark" href="/" aria-label="commission ホーム">
-          commission
+        <Link className="wordmark" href="/" aria-label="Favor ホーム">
+          Favor
         </Link>
         {session && (
           <>
@@ -276,7 +276,7 @@ export function Workspace({
         )}
       </main>
       <footer className="footer shell">
-        <span className="footer-brand">commission</span>
+        <span className="footer-brand">Favor</span>
       </footer>
     </>
   );

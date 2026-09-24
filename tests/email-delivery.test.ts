@@ -9,7 +9,7 @@ import { hashToken } from '../src/server/auth.js';
 test('確認コードを指定した送信元から本人のメールアドレスへ送信する', async () => {
   const deliver = resendDelivery(
     'test-mail-credential',
-    'commission <login@example.test>',
+    'Favor <login@example.test>',
     async (url, init) => {
       assert.equal(url, 'https://api.resend.com/emails');
       assert.equal(init!.method, 'POST');
@@ -17,8 +17,8 @@ test('確認コードを指定した送信元から本人のメールアドレ�
       assert.equal(new Headers(init!.headers).get('Authorization'), 'Bearer test-mail-credential');
       const body = JSON.parse(String(init!.body));
       assert.deepEqual(body.to, ['recipient@example.test']);
-      assert.equal(body.from, 'commission <login@example.test>');
-      assert.equal(body.subject, 'commission 確認コード');
+      assert.equal(body.from, 'Favor <login@example.test>');
+      assert.equal(body.subject, 'Favor 確認コード');
       assert.match(body.text, /01234567/);
       assert.match(body.text, /10分以内/);
       return Response.json({ id: 'delivered' });

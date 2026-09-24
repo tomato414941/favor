@@ -11,7 +11,7 @@ function Frame({ children }: { children: React.ReactNode }) {
     <>
       <header className="header shell">
         <Link className="wordmark" href="/">
-          commission
+          Favor
         </Link>
         <nav aria-label="メインナビゲーション">
           <Link href="/works" aria-current="page">
@@ -21,7 +21,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       </header>
       <main className="shell works-page">{children}</main>
       <footer className="footer shell">
-        <span className="footer-brand">commission</span>
+        <span className="footer-brand">Favor</span>
       </footer>
     </>
   );

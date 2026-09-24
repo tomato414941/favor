@@ -19,7 +19,7 @@ export function resendDelivery(
       body: JSON.stringify({
         from,
         to: [to],
-        subject: 'commission 確認コード',
+        subject: 'Favor 確認コード',
         text: `確認コード：${code}\n\n10分以内に、メールアドレスを入力した画面へ入力してください。\n心当たりがなければ、このメールは破棄してください。`,
       }),
     });
