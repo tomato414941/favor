@@ -14,11 +14,26 @@ import { Arrow } from './ui';
 
 import { yen, date, visibilityLabels } from './format';
 
+function useMutationKeys() {
+  const keys = useRef(new Map<string, { payload: string; key: string }>());
+  return async function mutate<T>(path: string, body: unknown = {}, token?: string): Promise<T> {
+    const payload = JSON.stringify({ body, token });
+    let attempt = keys.current.get(path);
+    if (!attempt || attempt.payload !== payload) {
+      attempt = { payload, key: crypto.randomUUID() };
+      keys.current.set(path, attempt);
+    }
+    const result = await api<T>(path, { body, key: attempt.key, linkToken: token });
+    keys.current.delete(path);
+    return result;
+  };
+}
+
 function useLinkActions() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const lock = useRef(false);
-  const keys = useRef(new Map<string, { payload: string; key: string }>());
+  const mutate = useMutationKeys();
   async function run(action: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -32,17 +47,6 @@ function useLinkActions() {
       lock.current = false;
       setBusy(false);
     }
-  }
-  async function mutate<T>(path: string, body: unknown = {}, token?: string): Promise<T> {
-    const payload = JSON.stringify({ body, token });
-    let attempt = keys.current.get(path);
-    if (!attempt || attempt.payload !== payload) {
-      attempt = { payload, key: crypto.randomUUID() };
-      keys.current.set(path, attempt);
-    }
-    const result = await api<T>(path, { body, key: attempt.key, linkToken: token });
-    keys.current.delete(path);
-    return result;
   }
   return { busy, error, run, mutate };
 }
@@ -88,42 +92,27 @@ function LinkFacts({ link }: { link: RequestLinkView }) {
 
 export function RequestLinks({
   settings,
-  composing,
+  mode,
+  links,
+  busy,
+  run,
+  notify,
+  onChange,
   onCreated,
 }: {
   settings: RequestFormSettings;
-  composing: boolean;
+  mode: 'compose' | 'list' | 'hidden';
+  links: RequestLinkView[];
+  busy: boolean;
+  run: (action: () => Promise<void>) => Promise<void>;
+  notify: (message: string) => void;
+  onChange: (link: RequestLinkView) => void;
   onCreated: () => void;
 }) {
-  const [items, setItems] = useState<RequestLinkView[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
-  const [notice, setNotice] = useState('');
-  const actions = useLinkActions();
-  const ticket = useRef(0);
-  async function refresh() {
-    const current = ++ticket.current;
-    const result = await api<{ links: RequestLinkView[] }>('/links');
-    if (current === ticket.current) setItems(result.links);
-  }
-  useEffect(() => {
-    void actions.run(refresh);
-    return () => {
-      ticket.current++;
-    };
-  }, [composing]);
-  useEffect(() => {
-    if (composing || actions.busy) return;
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void actions.run(refresh);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [composing, actions.busy]);
-  const update = (link: RequestLinkView) => {
-    ticket.current++;
-    setItems((current) => [link, ...current.filter((item) => item.id !== link.id)]);
-  };
+  const mutate = useMutationKeys();
   function save(result: RequestLinkResult) {
-    update(result.link);
+    onChange(result.link);
     setUrls((current) => {
       const next = { ...current };
       if (result.token) next[result.link.id] = `${window.location.origin}/#link=${result.token}`;
@@ -132,10 +121,10 @@ export function RequestLinks({
     });
   }
   async function submit(input: RequestLinkInput) {
-    await actions.run(async () => {
-      const result = await actions.mutate<RequestLinkResult>('/links', input);
+    await run(async () => {
+      const result = await mutate<RequestLinkResult>('/links', input);
       save(result);
-      setNotice(
+      notify(
         result.token
           ? '依頼リンクを作成しました。依頼する相手だけに共有してください。'
           : '作成済みの依頼を確認しました。共有するリンクを再発行してください。',
@@ -146,15 +135,15 @@ export function RequestLinks({
   async function reissue(link: RequestLinkView) {
     if (!window.confirm('古いリンクを無効にして再発行しますか？受諾期限・納品期限は変わりません。'))
       return;
-    await actions.run(async () => {
+    await run(async () => {
       setUrls((current) => {
         const next = { ...current };
         delete next[link.id];
         return next;
       });
-      const result = await actions.mutate<RequestLinkResult>(`/links/${link.id}/reissue`);
+      const result = await mutate<RequestLinkResult>(`/links/${link.id}/reissue`);
       save(result);
-      setNotice(
+      notify(
         result.token
           ? 'リンクを再発行しました。相手に新しいリンクを共有してください。'
           : '再発行済みのリンクを表示できません。もう一度再発行してください。',
@@ -164,168 +153,129 @@ export function RequestLinks({
   async function withdraw(link: RequestLinkView) {
     if (!window.confirm('この依頼を取り消しますか？リンクを無効にし、支払確保を解除します。'))
       return;
-    await actions.run(async () => {
-      update(await actions.mutate<RequestLinkView>(`/links/${link.id}/withdraw`));
+    await run(async () => {
+      onChange(await mutate<RequestLinkView>(`/links/${link.id}/withdraw`));
       setUrls((current) => {
         const next = { ...current };
         delete next[link.id];
         return next;
       });
-      setNotice('依頼を取り消し、支払確保を解除しました。');
+      notify('依頼を取り消し、支払確保を解除しました。');
     });
   }
   async function copy(url: string) {
-    await actions.run(async () => {
+    await run(async () => {
       if (!navigator.clipboard) throw new Error('リンク欄を選択してコピーしてください。');
       try {
         await navigator.clipboard.writeText(url);
       } catch {
         throw new Error('コピーできませんでした。リンク欄を選択してコピーしてください。');
       }
-      setNotice('依頼リンクをコピーしました。');
+      notify('依頼リンクをコピーしました。');
     });
   }
-  const pending = items.filter((link) => link.state !== 'accepted');
+  if (mode === 'hidden') return null;
+  if (mode === 'compose')
+    return (
+      <section className="request-links-section">
+        <section className="intro">
+          <h1>依頼を作る</h1>
+          <p className="intro-copy">作成したリンクを、依頼したい相手に共有してください。</p>
+        </section>
+        <div className="compose-layout request-link-compose">
+          <aside className="request-link-guide">
+            <h2>依頼の流れ</h2>
+            <ol>
+              <li>内容と金額を決める</li>
+              <li>リンクを相手に共有する</li>
+              <li>相手が受諾すると制作開始</li>
+            </ol>
+            <p>相手は登録せずに内容を確認できます。受けるときに登録・ログインします。</p>
+            <p className="share-reminder">
+              リンクを知っている人は閲覧・受諾できます。DMやメールで相手だけに共有してください。
+            </p>
+            <dl className="guide-deadlines">
+              <div>
+                <dt>受諾期限</dt>
+                <dd>作成から{settings.terms.acceptanceDays}日</dd>
+              </div>
+              <div>
+                <dt>納品期限</dt>
+                <dd>作成から{settings.terms.deliveryDays}日</dd>
+              </div>
+            </dl>
+            <p className="hint">リンクを再発行しても期限は変わりません。</p>
+          </aside>
+          <RequestForm settings={settings} busy={busy} submit={submit} />
+        </div>
+      </section>
+    );
+  if (!links.length) return null;
   return (
-    <section className="request-links-section">
-      {actions.error && (
-        <div className="message error" role="alert">
-          {actions.error}{' '}
-          <button disabled={actions.busy} onClick={() => void actions.run(refresh)}>
-            再読み込み
-          </button>
-        </div>
-      )}
-      {!composing && notice && (
-        <div className="message success" role="status">
-          {notice}
-        </div>
-      )}
-      {composing ? (
-        <>
-          <section className="intro">
-            <h1>依頼を作る</h1>
-            <p className="intro-copy">作成したリンクを、依頼したい相手に共有してください。</p>
-          </section>
-          <div className="compose-layout request-link-compose">
-            <aside className="request-link-guide">
-              <h2>依頼の流れ</h2>
-              <ol>
-                <li>内容と金額を決める</li>
-                <li>リンクを相手に共有する</li>
-                <li>相手が受諾すると制作開始</li>
-              </ol>
-              <p>相手は登録せずに内容を確認できます。受けるときに登録・ログインします。</p>
-              <p className="share-reminder">
-                リンクを知っている人は閲覧・受諾できます。DMやメールで相手だけに共有してください。
-              </p>
-              <dl className="guide-deadlines">
-                <div>
-                  <dt>受諾期限</dt>
-                  <dd>作成から{settings.terms.acceptanceDays}日</dd>
-                </div>
-                <div>
-                  <dt>納品期限</dt>
-                  <dd>作成から{settings.terms.deliveryDays}日</dd>
-                </div>
-              </dl>
-              <p className="hint">リンクを再発行しても期限は変わりません。</p>
-            </aside>
-            <RequestForm settings={settings} busy={actions.busy} submit={submit} />
+    <div className="request-link-list">
+      {links.map((link) => (
+        <article className="request-detail request-link-card" key={link.id} aria-label="依頼リンク">
+          <div className="detail-heading">
+            <span className="eyebrow">共有した依頼</span>
+            <span className={`status status-${link.state === 'pending' ? 'pending' : 'cancelled'}`}>
+              <i />
+              {link.state === 'pending' ? '受諾待ち' : '受付終了'}
+            </span>
           </div>
-        </>
-      ) : (
-        <>
-          <div className="request-link-list-heading">
-            <h2>送った依頼リンク</h2>
-          </div>
-          {pending.length ? (
-            <div className="request-link-list">
-              {pending.map((link) => (
-                <article
-                  className="request-detail request-link-card"
-                  key={link.id}
-                  aria-label="依頼リンク"
-                >
-                  <div className="detail-heading">
-                    <span className="eyebrow">共有した依頼</span>
-                    <span
-                      className={`status status-${link.state === 'pending' ? 'pending' : 'cancelled'}`}
+          <h2>
+            {link.state === 'pending' ? '相手の受諾を待っています' : 'この依頼の受付は終了しました'}
+          </h2>
+          <LinkFacts link={link} />
+          {link.state === 'pending' ? (
+            <div className="request-link-share">
+              {urls[link.id] ? (
+                <>
+                  <label htmlFor={`link-${link.id}`}>依頼リンク</label>
+                  <div className="link-row">
+                    <input
+                      id={`link-${link.id}`}
+                      className="text-input"
+                      value={urls[link.id]}
+                      readOnly
+                      onFocus={(event) => event.target.select()}
+                    />
+                    <button
+                      className="quiet-button"
+                      disabled={busy}
+                      onClick={() => void copy(urls[link.id]!)}
                     >
-                      <i />
-                      {link.state === 'pending' ? '受諾待ち' : '受付終了'}
-                    </span>
+                      コピー
+                    </button>
                   </div>
-                  <h2>
-                    {link.state === 'pending'
-                      ? '相手の受諾を待っています'
-                      : 'この依頼の受付は終了しました'}
-                  </h2>
-                  <LinkFacts link={link} />
-                  {link.state === 'pending' ? (
-                    <div className="request-link-share">
-                      {urls[link.id] ? (
-                        <>
-                          <label htmlFor={`link-${link.id}`}>依頼リンク</label>
-                          <div className="link-row">
-                            <input
-                              id={`link-${link.id}`}
-                              className="text-input"
-                              value={urls[link.id]}
-                              readOnly
-                              onFocus={(event) => event.target.select()}
-                            />
-                            <button
-                              className="quiet-button"
-                              disabled={actions.busy}
-                              onClick={() => void copy(urls[link.id]!)}
-                            >
-                              コピー
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <p className="hint">共有するリンクが必要な場合は再発行してください。</p>
-                      )}
-                      <p className="hint">
-                        相手だけに共有してください。リンクの作成だけでは通知は送られません。
-                      </p>
-                      <div className="action-buttons">
-                        <button
-                          className="quiet-button"
-                          disabled={actions.busy}
-                          onClick={() => void reissue(link)}
-                        >
-                          リンクを再発行
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={actions.busy}
-                          onClick={() => void withdraw(link)}
-                        >
-                          依頼を取り消す
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="cancellation-note">
-                      {link.cancelledReason === 'declined'
-                        ? '相手が依頼を見送りました。'
-                        : link.cancelledReason === 'expired'
-                          ? '受諾期限を過ぎました。'
-                          : '依頼を取り消しました。'}
-                      支払確保を解除しました。
-                    </p>
-                  )}
-                </article>
-              ))}
+                </>
+              ) : (
+                <p className="hint">共有するリンクが必要な場合は再発行してください。</p>
+              )}
+              <p className="hint">
+                相手だけに共有してください。リンクの作成だけでは通知は送られません。
+              </p>
+              <div className="action-buttons">
+                <button className="quiet-button" disabled={busy} onClick={() => void reissue(link)}>
+                  リンクを再発行
+                </button>
+                <button className="text-button" disabled={busy} onClick={() => void withdraw(link)}>
+                  依頼を取り消す
+                </button>
+              </div>
             </div>
           ) : (
-            <p className="empty-links">受諾待ちの依頼はありません。</p>
+            <p className="cancellation-note">
+              {link.cancelledReason === 'declined'
+                ? '相手が依頼を見送りました。'
+                : link.cancelledReason === 'expired'
+                  ? '受諾期限を過ぎました。'
+                  : '依頼を取り消しました。'}
+              支払確保を解除しました。
+            </p>
           )}
-        </>
-      )}
-    </section>
+        </article>
+      ))}
+    </div>
   );
 }
 

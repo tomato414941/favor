@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AuthOptions, RequestView, SessionView } from '../src/shared';
+import type { AuthOptions, RequestLinkView, RequestView, SessionView } from '../src/shared';
 import { api, ApiError } from './api';
 import { RequestLinks } from './RequestLinks';
 import type { RequestFormSettings } from './RequestForm';
@@ -7,6 +7,7 @@ import { RequestDetail, RequestStatus, type RequestAction } from './RequestDetai
 import { yen } from './format';
 
 type Page = 'compose' | 'requests';
+type Tab = 'sent' | 'received';
 
 export function Workspace({
   initialRequestId,
@@ -22,7 +23,9 @@ export function Workspace({
   const [settings, setSettings] = useState<RequestFormSettings | null>(null);
   const [session, setSession] = useState<SessionView | null>(null);
   const [requests, setRequests] = useState<RequestView[]>([]);
+  const [links, setLinks] = useState<RequestLinkView[]>([]);
   const [page, setPage] = useState<Page>(initialRequestId ? 'requests' : 'compose');
+  const [chosenTab, setChosenTab] = useState<Tab | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(initialRequestId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -33,16 +36,15 @@ export function Workspace({
   const ticket = useRef(0);
   const refresh = useCallback(async () => {
     const current = ++ticket.current;
-    const [nextSession, data] = await Promise.all([
+    const [nextSession, data, sent] = await Promise.all([
       api<SessionView>('/session'),
       api<{ requests: RequestView[] }>('/requests'),
+      api<{ links: RequestLinkView[] }>('/links'),
     ]);
     if (current !== ticket.current) return;
     setSession(nextSession);
     setRequests(data.requests);
-    setSelectedId((id) =>
-      data.requests.some((request) => request.id === id) ? id : (data.requests[0]?.id ?? null),
-    );
+    setLinks(sent.links);
   }, []);
   useEffect(() => {
     let active = true;
@@ -117,12 +119,35 @@ export function Workspace({
       await refresh();
     });
   }
+  const changeLink = (link: RequestLinkView) => {
+    ticket.current++;
+    setLinks((current) => [link, ...current.filter((item) => item.id !== link.id)]);
+  };
   const navigate = (next: Page) => {
     setPage(next);
     setError('');
     setNotice('');
   };
-  const selected = requests.find((request) => request.id === selectedId);
+  const pendingLinks = links.filter((link) => link.state !== 'accepted');
+  const sentRequests = requests.filter((request) => request.viewerRole === 'client');
+  const receivedRequests = requests.filter((request) => request.viewerRole === 'creator');
+  const initialRole = requests.find((request) => request.id === initialRequestId)?.viewerRole;
+  const tab: Tab =
+    chosenTab ??
+    (initialRole === 'creator'
+      ? 'received'
+      : initialRole === 'client'
+        ? 'sent'
+        : receivedRequests.length && !sentRequests.length && !pendingLinks.length
+          ? 'received'
+          : 'sent');
+  const visible = tab === 'sent' ? sentRequests : receivedRequests;
+  const selected = visible.find((request) => request.id === selectedId) ?? visible[0];
+  const select = (next: Tab) => {
+    setChosenTab(next);
+    setError('');
+    setNotice('');
+  };
   return (
     <>
       <div className="demo-banner">
@@ -194,32 +219,52 @@ export function Workspace({
         ) : (
           <>
             {page === 'requests' && (
-              <div className="section-heading workspace-heading">
-                <h1>依頼一覧</h1>
-                <button className="quiet-button" onClick={() => navigate('compose')}>
-                  依頼を作る
-                </button>
-              </div>
-            )}
-            <RequestLinks
-              settings={settings}
-              composing={page === 'compose'}
-              onCreated={() => navigate('requests')}
-            />
-            {page === 'requests' && (
-              <section className="requests-section">
-                <div className="section-heading">
-                  <h2>制作・納品</h2>
-                  <span className="total">{requests.length} 件</span>
+              <>
+                <div className="section-heading workspace-heading">
+                  <h1>依頼一覧</h1>
+                  <button className="quiet-button" onClick={() => navigate('compose')}>
+                    依頼を作る
+                  </button>
                 </div>
-                {requests.length ? (
+                <div className="tabs" role="tablist" aria-label="依頼の種類">
+                  <button role="tab" aria-selected={tab === 'sent'} onClick={() => select('sent')}>
+                    送った依頼
+                    <span className="count">{pendingLinks.length + sentRequests.length}</span>
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={tab === 'received'}
+                    onClick={() => select('received')}
+                  >
+                    受けた依頼
+                    <span className="count">{receivedRequests.length}</span>
+                  </button>
+                </div>
+              </>
+            )}
+            <div className={page === 'requests' ? 'tab-panel' : undefined}>
+              <RequestLinks
+                settings={settings}
+                mode={page === 'compose' ? 'compose' : tab === 'sent' ? 'list' : 'hidden'}
+                links={pendingLinks}
+                busy={busy}
+                run={run}
+                notify={setNotice}
+                onChange={changeLink}
+                onCreated={() => {
+                  setChosenTab('sent');
+                  setPage('requests');
+                }}
+              />
+              {page === 'requests' &&
+                (visible.length ? (
                   <div className="requests-layout">
                     <div className="request-list" aria-label="依頼を選択">
-                      {requests.map((request) => (
+                      {visible.map((request) => (
                         <button
                           key={request.id}
-                          className={`request-item ${request.id === selectedId ? 'selected' : ''}`}
-                          aria-pressed={request.id === selectedId}
+                          className={`request-item ${request.id === selected?.id ? 'selected' : ''}`}
+                          aria-pressed={request.id === selected?.id}
                           onClick={() => {
                             setSelectedId(request.id);
                             setError('');
@@ -228,9 +273,6 @@ export function Workspace({
                         >
                           <span className="request-item-top">
                             <RequestStatus request={request} />
-                            <span className="request-direction">
-                              {request.viewerRole === 'creator' ? '受けた依頼' : '送った依頼'}
-                            </span>
                           </span>
                           <span className="request-excerpt">{request.brief}</span>
                           <span className="request-item-bottom">
@@ -255,14 +297,23 @@ export function Workspace({
                       />
                     )}
                   </div>
+                ) : tab === 'sent' ? (
+                  !pendingLinks.length && (
+                    <div className="empty-state">
+                      <h2>送った依頼はありません</h2>
+                      <p>リンクを作って相手に共有すると、受諾から納品までをここで確認できます。</p>
+                      <button className="quiet-button" onClick={() => navigate('compose')}>
+                        依頼を作る
+                      </button>
+                    </div>
+                  )
                 ) : (
                   <div className="empty-state">
-                    <h2>制作中・納品済みの依頼はありません</h2>
-                    <p>受諾した依頼は、ここで制作・納品の状況を確認できます。</p>
+                    <h2>受けた依頼はありません</h2>
+                    <p>依頼リンクを受諾すると、ここで制作・納品を進められます。</p>
                   </div>
-                )}
-              </section>
-            )}
+                ))}
+            </div>
           </>
         )}
       </main>
