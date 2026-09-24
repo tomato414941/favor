@@ -178,10 +178,6 @@ export function RequestLinks({
   if (mode === 'compose')
     return (
       <section className="request-links-section">
-        <section className="intro">
-          <h1>依頼を作る</h1>
-          <p className="intro-copy">作成したリンクを、依頼したい相手に共有してください。</p>
-        </section>
         <div className="compose-layout request-link-compose">
           <aside className="request-link-guide">
             <h2>依頼の流れ</h2>

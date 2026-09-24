@@ -212,19 +212,12 @@ nav button[aria-current]::after {
   color: var(--muted);
   font-size: 12px;
 }
-.intro {
-  padding: 34px 0 28px;
-}
-.intro-copy {
-  margin-top: 7px;
-  color: var(--muted);
-  font-size: 13px;
-}
 .compose-layout {
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr);
   gap: 42px;
   align-items: start;
+  padding-top: 34px;
 }
 .request-link-guide {
   position: sticky;
@@ -1177,10 +1170,6 @@ nav .count {
   .account-panel > h1 {
     font-size: 19px;
   }
-  .intro {
-    padding: 26px 0 22px;
-  }
-  .intro h1,
   .section-heading h1 {
     font-size: 25px;
   }
@@ -1188,6 +1177,7 @@ nav .count {
     display: flex;
     flex-direction: column;
     gap: 30px;
+    padding-top: 28px;
   }
   .request-form {
     order: 0;
