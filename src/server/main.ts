@@ -3,7 +3,7 @@ import { buildApp } from './app.js';
 import { CommissionService } from './service.js';
 import { Store } from './store.js';
 import { XProvider } from './x-auth.js';
-import { fileDelivery, resendDelivery } from './email-delivery.js';
+import { fileDelivery, resendDelivery, testDomainDelivery } from './email-delivery.js';
 import { parsePublicOrigin } from './public-origin.js';
 
 if (!process.argv.includes('--demo'))
@@ -43,10 +43,16 @@ if (
   throw new Error(
     'File email delivery is allowed only for local development. Configure Resend for public access.',
   );
-const emailDelivery =
+const testMailDomain = (process.env.COMMISSION_TEST_MAIL_DOMAIN ?? '').trim().toLowerCase();
+if (testMailDomain && !/^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.test$/.test(testMailDomain))
+  throw new Error('COMMISSION_TEST_MAIL_DOMAIN must be a reserved .test domain.');
+const providerDelivery =
   delivery === 'resend'
     ? resendDelivery(process.env.RESEND_API_KEY ?? '', process.env.COMMISSION_EMAIL_FROM ?? '')
     : fileDelivery(resolve(directory, 'mail'));
+const emailDelivery = testMailDomain
+  ? testDomainDelivery(testMailDomain, fileDelivery(resolve(directory, 'mail')), providerDelivery)
+  : providerDelivery;
 const store = new Store(resolve(directory, 'commission.sqlite'));
 const service = new CommissionService(store);
 const app = await buildApp(service, {

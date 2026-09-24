@@ -36,3 +36,13 @@ export function fileDelivery(directory: string): EmailDelivery {
     await rename(temporary, join(directory, `${hashToken(message.to)}.json`));
   };
 }
+
+/** Addresses in a reserved .test domain never reach the mail provider; staging reads their codes locally. */
+export function testDomainDelivery(
+  domain: string,
+  local: EmailDelivery,
+  remote: EmailDelivery,
+): EmailDelivery {
+  const suffix = `@${domain.trim().toLowerCase()}`;
+  return (message) => (message.to.toLowerCase().endsWith(suffix) ? local : remote)(message);
+}
