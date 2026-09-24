@@ -178,29 +178,7 @@ export function RequestLinks({
   if (mode === 'compose')
     return (
       <section className="request-links-section">
-        <div className="compose-layout request-link-compose">
-          <aside className="request-link-guide">
-            <h2>依頼の流れ</h2>
-            <ol>
-              <li>内容と金額を決める</li>
-              <li>リンクを相手に共有する</li>
-              <li>相手が受諾すると制作開始</li>
-            </ol>
-            <p>相手は登録せずに内容を確認できます。受けるときに登録・ログインします。</p>
-            <p className="share-reminder">
-              リンクを知っている人は閲覧・受諾できます。DMやメールで相手だけに共有してください。
-            </p>
-            <dl className="guide-deadlines">
-              <div>
-                <dt>受諾期限</dt>
-                <dd>作成から{settings.terms.acceptanceDays}日</dd>
-              </div>
-              <div>
-                <dt>納品期限</dt>
-                <dd>作成から{settings.terms.deliveryDays}日</dd>
-              </div>
-            </dl>
-          </aside>
+        <div className="compose-layout">
           <RequestForm settings={settings} busy={busy} submit={submit} />
         </div>
       </section>

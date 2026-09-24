@@ -120,7 +120,10 @@ export function RequestForm({
           />
           <span>成人向けなど、閲覧に注意が必要な内容を含む</span>
         </label>
-        <p className="payment-note">支払いはリンク作成時に確保し、相手の受諾時に確定します。</p>
+        <p className="payment-note">
+          受諾期限は作成から{terms.acceptanceDays}日、納品期限は{terms.deliveryDays}日です。
+          支払いはリンク作成時に確保し、相手の受諾時に確定します。
+        </p>
         <div className="agreement">
           <label className="checkbox-line">
             <input
