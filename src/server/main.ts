@@ -50,7 +50,8 @@ const identity =
         resolver: clerkResolver({
           secretKey: process.env.CLERK_SECRET_KEY ?? '',
           publishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? '',
-          ...(publicOrigin ? { authorizedParties: [publicOrigin] } : {}),
+          // Server-minted session tokens (ops scripts) carry no azp claim, so the
+          // authorized-party check stays off while Favor is this instance's only frontend.
         }),
         publishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? '',
       }

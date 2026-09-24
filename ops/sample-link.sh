@@ -8,8 +8,8 @@ set -eu
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 env_file=${FAVOR_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/favor/staging.env}
-domain=${FAVOR_TEST_MAIL_DOMAIN:-favor.test}
-email=$(printf '%s' "${FAVOR_SAMPLE_EMAIL:-sample@$domain}" | tr '[:upper:]' '[:lower:]')
+# Clerk rejects reserved test domains, so the sample account uses a plain address; it never receives mail.
+email=$(printf '%s' "${FAVOR_SAMPLE_EMAIL:-favor.sample@example.com}" | tr '[:upper:]' '[:lower:]')
 origin=${FAVOR_ORIGIN:-}
 if [ -z "$origin" ]; then
   host=$(sed -n 's/^FAVOR_HOST=//p' "$env_file" | tail -n 1)
