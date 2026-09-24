@@ -47,7 +47,7 @@ if [ -n "$pending" ]; then
 else
   body=$(jq -cn '{
     brief: "見本の依頼です。ステージングの表示確認用に作成しています。\n\n静かな夜の海辺と、遠くに見える灯台の風景を描いてください。人物は入れず、色味は落ち着いたものを希望します。用途は個人で楽しむためで、参考資料はありません。",
-    amount: 12000, visibility: "hidden", nsfw: false, agreeToRules: true }')
+    amount: 12000, visibility: "hidden", agreeToRules: true }')
   result=$(api POST /links "$body" "$(new_key)")
 fi
 token=$(printf '%s' "$result" | jq -r '.token // empty')

@@ -121,7 +121,7 @@ def main():
                 identity = page.evaluate("async () => (await fetch('/api/auth/identity')).json()")
                 assert identity['email'] == credentials['email']
                 created = post('/api/links', {'brief': 'Cookie分離を確認するテスト依頼です。', 'amount': 12000,
-                                              'visibility': 'hidden', 'nsfw': False, 'agreeToRules': True})
+                                              'visibility': 'hidden', 'agreeToRules': True})
                 assert created['status'] == 201
                 with api('/api/links', cookie=f"{cookie_name}={original_cookie['value']}") as response:
                     assert json.load(response)['links'][0]['id'] == created['body']['link']['id']

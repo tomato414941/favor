@@ -30,7 +30,6 @@ function setup(options: ConstructorParameters<typeof CommissionService>[3] = {})
     brief: '海辺の喫茶店を舞台にした短い物語をお願いします。',
     amount: 12000,
     visibility: 'public',
-    nsfw: false,
     agreeToRules: true,
   };
   const create = (extra: Partial<RequestLinkInput> = {}) => {

@@ -14,7 +14,6 @@ const input = {
   brief: '創作の依頼内容です。',
   amount: 12000,
   visibility: 'public' as const,
-  nsfw: false,
   agreeToRules: true,
 };
 test('メールアドレスを本人だけに表示し、依頼相手と公開作品には公開用の名前を表示する', async () => {

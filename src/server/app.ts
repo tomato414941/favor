@@ -314,7 +314,7 @@ export async function buildApp(service: CommissionService, options: AppOptions =
         body: {
           type: 'object',
           additionalProperties: false,
-          required: ['brief', 'amount', 'visibility', 'nsfw', 'agreeToRules'],
+          required: ['brief', 'amount', 'visibility', 'agreeToRules'],
           properties: {
             brief: { type: 'string', minLength: 1, maxLength: service.policy.maximumBriefLength },
             amount: {
@@ -323,7 +323,6 @@ export async function buildApp(service: CommissionService, options: AppOptions =
               maximum: service.policy.maximumAmount,
             },
             visibility: { enum: ['public', 'anonymous', 'hidden'] },
-            nsfw: { type: 'boolean' },
             agreeToRules: { const: true },
           },
         },

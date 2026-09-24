@@ -12,14 +12,14 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 2 && (version !== 0 || initialized)) {
+    if (version !== 3 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 2 before starting the application.',
+        'Unsupported database schema. Prepare schema version 3 before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 2) return;
+    if (version === 3) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
@@ -29,7 +29,7 @@ export class Store {
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
         creator_id TEXT NOT NULL REFERENCES users(id),
         brief TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0),
-        visibility TEXT NOT NULL, nsfw INTEGER NOT NULL, state TEXT NOT NULL,
+        visibility TEXT NOT NULL, state TEXT NOT NULL,
         created_at INTEGER NOT NULL, accept_by INTEGER NOT NULL, deliver_by INTEGER NOT NULL,
         cancelled_reason TEXT, delivery_version INTEGER NOT NULL DEFAULT 0
       ) STRICT;
@@ -78,7 +78,7 @@ export class Store {
         recipient_provider TEXT NOT NULL, recipient_subject TEXT NOT NULL,
         recipient_name TEXT NOT NULL,
         brief TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0),
-        visibility TEXT NOT NULL, nsfw INTEGER NOT NULL,
+        visibility TEXT NOT NULL,
         state TEXT NOT NULL CHECK (state IN ('pending', 'accepted', 'cancelled')),
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, deliver_by INTEGER NOT NULL,
         token_hash TEXT NOT NULL UNIQUE, cancelled_reason TEXT,
@@ -103,7 +103,7 @@ export class Store {
         id INTEGER PRIMARY KEY, link_id TEXT NOT NULL REFERENCES request_links(id),
         actor_id TEXT NOT NULL, action TEXT NOT NULL, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 2;
+      PRAGMA user_version = 3;
     `),
     );
   }

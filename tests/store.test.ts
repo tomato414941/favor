@@ -27,7 +27,6 @@ test('再起動後も依頼・ファイル・操作の再試行・ログイン�
       brief: '静かな明け方の物語をお願いします。',
       amount: 12000,
       visibility: 'hidden' as const,
-      nsfw: false,
       agreeToRules: true,
     };
     const createKey = randomUUID();

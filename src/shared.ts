@@ -7,7 +7,6 @@ export interface RequestLinkInput {
   brief: string;
   amount: number;
   visibility: Visibility;
-  nsfw: boolean;
   agreeToRules: boolean;
 }
 export interface UploadInput {
@@ -25,7 +24,6 @@ export interface WorkView {
   clientName: string;
   creatorName: string;
   visibility: Visibility;
-  nsfw: boolean;
   state: RequestState;
   createdAt: number;
   acceptBy: number;
@@ -66,7 +64,6 @@ export interface RequestLinkView {
   brief: string;
   amount: number;
   visibility: Visibility;
-  nsfw: boolean;
   state: RequestLinkState;
   paymentState: PaymentState;
   createdAt: number;

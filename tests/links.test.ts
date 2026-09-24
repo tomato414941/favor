@@ -17,7 +17,6 @@ const input: RequestLinkInput = {
   brief: '非公開の夜空の物語をお願いします。',
   amount: 12000,
   visibility: 'anonymous',
-  nsfw: false,
   agreeToRules: true,
 };
 const errorCode = (code: string) => (error: unknown) =>

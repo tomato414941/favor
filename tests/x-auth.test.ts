@@ -22,7 +22,6 @@ const input = {
   brief: '星を題材にした、未公開の物語をお願いします。',
   amount: 12000,
   visibility: 'anonymous',
-  nsfw: true,
   agreeToRules: true,
 };
 const codeIs = (code: string) => (error: unknown) =>

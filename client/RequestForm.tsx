@@ -28,7 +28,7 @@ export function RequestForm({
   const [agreed, setAgreed] = useState(false);
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submit({ brief, amount: Number(amount), visibility, nsfw: false, agreeToRules: agreed });
+    await submit({ brief, amount: Number(amount), visibility, agreeToRules: agreed });
   }
   return (
     <form className="request-form" onSubmit={(event) => void onSubmit(event)}>

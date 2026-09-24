@@ -37,7 +37,6 @@ interface RequestRow {
   brief: string;
   amount: number;
   visibility: Visibility;
-  nsfw: number;
   state: RequestState;
   created_at: number;
   accept_by: number;
@@ -135,7 +134,6 @@ export class CommissionService {
           : this.user(row.client_id).name,
       creatorName: this.user(row.creator_id).name,
       visibility: row.visibility,
-      nsfw: Boolean(row.nsfw),
       state: row.state,
       createdAt: row.created_at,
       acceptBy: row.accept_by,
@@ -177,7 +175,7 @@ export class CommissionService {
   publicWorks(): WorkView[] {
     const rows = this.store.db
       .prepare(
-        "SELECT * FROM requests WHERE state = 'delivered' AND visibility != 'hidden' AND nsfw = 0 ORDER BY created_at DESC",
+        "SELECT * FROM requests WHERE state = 'delivered' AND visibility != 'hidden' ORDER BY created_at DESC",
       )
       .all() as unknown as RequestRow[];
     return rows.map((row) => this.workView(row));
@@ -235,8 +233,8 @@ export class CommissionService {
       const id = randomUUID();
       this.store.db
         .prepare(
-          `INSERT INTO requests (id, client_id, creator_id, brief, amount, visibility, nsfw, state, created_at, accept_by, deliver_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'accepting', ?, ?, ?)`,
+          `INSERT INTO requests (id, client_id, creator_id, brief, amount, visibility, state, created_at, accept_by, deliver_by)
+        VALUES (?, ?, ?, ?, ?, ?, 'accepting', ?, ?, ?)`,
         )
         .run(
           id,
@@ -245,7 +243,6 @@ export class CommissionService {
           input.brief,
           input.amount,
           input.visibility,
-          Number(input.nsfw),
           dates.createdAt,
           dates.expiresAt,
           dates.deliverBy,

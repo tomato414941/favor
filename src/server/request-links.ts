@@ -22,7 +22,6 @@ interface LinkRow {
   brief: string;
   amount: number;
   visibility: Visibility;
-  nsfw: number;
   state: RequestLinkState;
   created_at: number;
   expires_at: number;
@@ -100,7 +99,6 @@ export class RequestLinkService {
       brief: row.brief,
       amount: row.amount,
       visibility: row.visibility,
-      nsfw: Boolean(row.nsfw),
       state: row.state,
       paymentState: request?.paymentState ?? (row.state === 'pending' ? 'authorized' : 'released'),
       createdAt: row.created_at,
@@ -163,7 +161,6 @@ export class RequestLinkService {
       input.amount < policy.minimumAmount ||
       input.amount > policy.maximumAmount ||
       !['public', 'anonymous', 'hidden'].includes(input.visibility) ||
-      typeof input.nsfw !== 'boolean' ||
       input.agreeToRules !== true
     ) {
       throw new DomainError(
@@ -176,7 +173,6 @@ export class RequestLinkService {
       brief: input.brief.trim(),
       amount: input.amount,
       visibility: input.visibility,
-      nsfw: input.nsfw,
       agreeToRules: true,
       access: 'link',
     };
@@ -209,8 +205,8 @@ export class RequestLinkService {
       this.store.db
         .prepare(
           `INSERT INTO request_links (id, client_id, recipient_provider, recipient_subject, recipient_name,
-        brief, amount, visibility, nsfw, state, created_at, expires_at, deliver_by, token_hash)
-        VALUES (?, ?, '', '', '', ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+        brief, amount, visibility, state, created_at, expires_at, deliver_by, token_hash)
+        VALUES (?, ?, '', '', '', ?, ?, ?, 'pending', ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -218,7 +214,6 @@ export class RequestLinkService {
           normalized.brief,
           input.amount,
           input.visibility,
-          Number(input.nsfw),
           now,
           expiresAt,
           now + policy.deliveryMs,
@@ -312,7 +307,6 @@ export class RequestLinkService {
             brief: row.brief,
             amount: row.amount,
             visibility: row.visibility,
-            nsfw: Boolean(row.nsfw),
             agreeToRules: true,
           },
           { createdAt: row.created_at, expiresAt: row.expires_at, deliverBy: row.deliver_by },
