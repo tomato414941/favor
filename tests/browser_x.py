@@ -77,7 +77,7 @@ def main():
             page.goto(base)
             page.wait_for_load_state("networkidle")
             expect(page.get_by_role("heading", name="Favor", exact=True)).to_be_visible()
-            page.get_by_role("link", name="依頼を作る", exact=True).click()
+            page.get_by_role("link", name="お願いを書く", exact=True).click()
             expect(page.get_by_role("heading", name="ログイン", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Xでログイン", exact=True)).to_be_visible()
             assert sender.request.get(f"{base}/api/auth/identity").json() is None
@@ -91,8 +91,8 @@ def main():
             assert sender.request.get(f"{base}/api/session").status == 401
             layout(page, "x-registration")
             page.get_by_role("button", name="登録する", exact=True).click()
-            expect(page.get_by_role("heading", name="依頼リンクを作成", exact=True)).to_be_visible()
-            page.get_by_label("依頼内容", exact=True).fill(private_brief)
+            expect(page.get_by_role("heading", name="お願いを書く", exact=True)).to_be_visible()
+            page.get_by_label("お願いしたいこと", exact=True).fill(private_brief)
             page.get_by_role("checkbox", name=re.compile("^見積もり・打ち合わせ")).check()
             page.get_by_role("button", name="リンクを作成", exact=True).click()
             card = page.get_by_role("article", name="依頼リンク", exact=True)

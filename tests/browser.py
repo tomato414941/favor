@@ -56,10 +56,10 @@ def main():
             form.get_by_role('button', name='ログイン', exact=True).click()
 
         def compose(page, brief):
-            page.get_by_role('navigation').get_by_role('link', name='依頼を作る', exact=True).click()
-            expect(page.get_by_role('heading', name='依頼リンクを作成', exact=True)).to_be_visible()
-            page.get_by_label('依頼内容', exact=True).fill(brief)
-            page.get_by_label('依頼金額', exact=True).fill('12000')
+            page.get_by_role('navigation').get_by_role('link', name='お願いを書く', exact=True).click()
+            expect(page.get_by_role('heading', name='お願いを書く', exact=True)).to_be_visible()
+            page.get_by_label('お願いしたいこと', exact=True).fill(brief)
+            page.get_by_label('金額', exact=True).fill('12000')
             page.get_by_role('checkbox', name=re.compile('^見積もり・打ち合わせ')).check()
 
         def created_url(page, brief):
@@ -84,11 +84,11 @@ def main():
             page.get_by_role('link', name='ログイン', exact=True).click()
             expect(page.get_by_role('form', name='メールでログイン')).to_be_visible()
             page.go_back()
-            page.get_by_role('link', name='依頼を作る', exact=True).click()
+            page.get_by_role('link', name='お願いを書く', exact=True).click()
             expect(page.get_by_role('heading', name='ログイン', exact=True)).to_be_visible()
             layout(page, 'registration')
             register(page, sender_email)
-            expect(page.get_by_role('heading', name='依頼リンクを作成')).to_be_visible()
+            expect(page.get_by_role('heading', name='お願いを書く')).to_be_visible()
             cookie_name = '__Host-favor_session' if base.startswith('https://') else 'favor_session'
             session_cookie = next(cookie for cookie in sender.cookies() if cookie['name'] == cookie_name)
             assert session_cookie['httpOnly'] and session_cookie['sameSite'] == 'Strict'
@@ -248,8 +248,9 @@ def main():
 
             brief4 = 'メールで届ける匿名の依頼です。'
             compose(page, brief4)
-            page.get_by_label('相手のメールアドレス', exact=True).fill(receiver_email)
+            page.get_by_label('宛先のメールアドレス', exact=True).fill(receiver_email)
             page.get_by_role('radio', name='匿名').check()
+            layout(page, 'compose-mail')
             page.get_by_role('button', name='メールで送る', exact=True).click()
             expect(page.get_by_role('status')).to_contain_text('メールで送りました')
             card4 = page.get_by_role('article', name='依頼リンク').filter(has_text=brief4)

@@ -38,7 +38,7 @@ export function Home() {
             <h1 id="home-title">Favor</h1>
             <div className="home-actions">
               <Link className="home-create" href="/new">
-                依頼を作る <Arrow />
+                お願いを書く <Arrow />
               </Link>
               <Link className="home-browse" href="/works">
                 作品を見る

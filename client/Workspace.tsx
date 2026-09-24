@@ -142,7 +142,7 @@ export function Workspace({
   const visible = side === 'received' ? receivedRequests : sentRequests;
   const selected = current ?? visible[0];
   return (
-    <>
+    <div className={page === 'new' ? 'workspace compose-page' : 'workspace'}>
       <div className="demo-banner">
         <span className="demo-mark">試用版</span>実際の支払いは発生しません
       </div>
@@ -154,7 +154,7 @@ export function Workspace({
           <>
             <nav aria-label="メインナビゲーション">
               <Link href="/new" aria-current={page === 'new' ? 'page' : undefined}>
-                依頼を作る
+                お願いを書く
               </Link>
               <Link href="/sent" aria-current={side === 'sent' ? 'page' : undefined}>
                 送った依頼
@@ -261,7 +261,7 @@ export function Workspace({
                       <h2>送った依頼はありません</h2>
                       <p>リンクを作って相手に共有すると、受諾から納品までをここで確認できます。</p>
                       <Link className="quiet-button" href="/new">
-                        依頼を作る
+                        お願いを書く
                       </Link>
                     </div>
                   )
@@ -278,6 +278,6 @@ export function Workspace({
       <footer className="footer shell">
         <span className="footer-brand">Favor</span>
       </footer>
-    </>
+    </div>
   );
 }
