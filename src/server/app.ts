@@ -131,11 +131,7 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     typeof request.headers['idempotency-key'] === 'string'
       ? request.headers['idempotency-key']
       : '';
-  app.get('/api/health', async () => ({
-    ok: true,
-    mode: 'demo',
-    demoAuth: options.demoAuth === true,
-  }));
+  app.get('/api/health', async () => ({ ok: true, demoAuth: options.demoAuth === true }));
   app.get('/api/auth/options', async () => ({
     mode: x ? 'x' : options.demoAuth ? 'demo' : email ? 'email' : 'disabled',
     xLogin: Boolean(x),

@@ -218,7 +218,6 @@ export class RequestLinkService {
       amount: input.amount,
       visibility: input.visibility,
       agreeToRules: true,
-      access: 'link',
       delivery,
       recipientEmail,
     };
