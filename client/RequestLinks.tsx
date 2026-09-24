@@ -7,7 +7,7 @@ import type {
   RequestLinkView,
 } from '../src/shared';
 import { paymentLabels } from '../src/shared';
-import { api } from './api';
+import { api, ApiError } from './api';
 import { EmailLoginForm, XLoginButton } from './Auth';
 import { RequestForm, type RequestFormSettings } from './RequestForm';
 import { Arrow, Link } from './ui';
@@ -123,9 +123,11 @@ export function RequestLinks({
       const result = await mutate<RequestLinkResult>('/links', input);
       save(result);
       notify(
-        result.token
-          ? '依頼リンクを作成しました。依頼する相手だけに共有してください。'
-          : '作成済みの依頼を確認しました。共有するリンクを再発行してください。',
+        result.link.delivery === 'email'
+          ? `依頼を${result.link.recipientEmail ?? '相手'}へメールで送りました。`
+          : result.token
+            ? '依頼リンクを作成しました。依頼する相手だけに共有してください。'
+            : '作成済みの依頼を確認しました。共有するリンクを再発行してください。',
       );
       onCreated();
     });
@@ -142,9 +144,11 @@ export function RequestLinks({
       const result = await mutate<RequestLinkResult>(`/links/${link.id}/reissue`);
       save(result);
       notify(
-        result.token
-          ? 'リンクを再発行しました。相手に新しいリンクを共有してください。'
-          : '再発行済みのリンクを表示できません。もう一度再発行してください。',
+        result.link.delivery === 'email'
+          ? '新しいリンクをメールで送り直しました。前のリンクは使えません。'
+          : result.token
+            ? 'リンクを再発行しました。相手に新しいリンクを共有してください。'
+            : '再発行済みのリンクを表示できません。もう一度再発行してください。',
       );
     });
   }
@@ -197,7 +201,22 @@ export function RequestLinks({
             {link.state === 'pending' ? '相手の受諾を待っています' : 'この依頼の受付は終了しました'}
           </h2>
           <LinkFacts link={link} />
-          {link.state === 'pending' ? (
+          {link.state === 'pending' && link.delivery === 'email' ? (
+            <div className="request-link-share">
+              <p className="hint">
+                {link.recipientEmail}
+                へメールで送りました。相手がそのアドレスでログインすると開けます。
+              </p>
+              <div className="action-buttons">
+                <button className="quiet-button" disabled={busy} onClick={() => void reissue(link)}>
+                  メールを送り直す
+                </button>
+                <button className="text-button" disabled={busy} onClick={() => void withdraw(link)}>
+                  依頼を取り消す
+                </button>
+              </div>
+            </div>
+          ) : link.state === 'pending' ? (
             <div className="request-link-share">
               {urls[link.id] ? (
                 <>
@@ -240,7 +259,11 @@ export function RequestLinks({
                 ? '相手が依頼を見送りました。'
                 : link.cancelledReason === 'expired'
                   ? '受諾期限を過ぎました。'
-                  : '依頼を取り消しました。'}
+                  : link.cancelledReason === 'undeliverable'
+                    ? 'メールを送信できませんでした。'
+                    : link.cancelledReason === 'recipient_blocked'
+                      ? '相手がメールでの依頼を受け取らない設定にしています。'
+                      : '依頼を取り消しました。'}
               支払確保を解除しました。
             </p>
           )}
@@ -266,14 +289,37 @@ export function RequestLinkLanding({
   const [agreed, setAgreed] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const [loginRequired, setLoginRequired] = useState(false);
+  const [blocked, setBlocked] = useState<boolean | null>(null);
   const declineButton = useRef<HTMLButtonElement>(null);
   const actions = useLinkActions();
   async function load() {
     setLink(null);
+    setLoginRequired(false);
     const account = await api<IdentitySession | null>('/auth/identity');
     setIdentity(account);
-    setLink(await api<RequestLinkView>('/links/by-token', { linkToken: token }));
+    try {
+      const current = await api<RequestLinkView>('/links/by-token', { linkToken: token });
+      setLink(current);
+      if (current.delivery === 'email' && account?.email)
+        setBlocked((await api<{ blocked: boolean }>('/links/optout')).blocked);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'LINK_LOGIN_REQUIRED') setLoginRequired(true);
+      else throw cause;
+    }
     setReady(true);
+  }
+  async function toggleBlocked() {
+    await actions.run(async () => {
+      const next = await api<{ blocked: boolean }>('/links/optout', {
+        body: { blocked: !blocked },
+      });
+      setBlocked(next.blocked);
+      if (next.blocked) {
+        setLink(null);
+        setDeclined(true);
+      }
+    });
   }
   useEffect(() => {
     void actions.run(load);
@@ -339,8 +385,22 @@ export function RequestLinkLanding({
             <div className="request-detail" role="status">
               <h2>依頼を見送りました</h2>
               <p className="account-copy">支払確保を解除しました。ご確認ありがとうございました。</p>
+              {blocked && <p className="hint">今後、メールでの依頼は届きません。</p>}
               <a href="/">ホームへ</a>
             </div>
+          )}
+          {loginRequired && (
+            <section className="request-detail link-registration" aria-label="受け取るアカウント">
+              <h2>宛先のメールアドレスでログイン</h2>
+              <p className="account-copy">
+                この依頼はメールで届いたものです。届いたメールアドレスでログインすると開けます。
+              </p>
+              {options.emailLogin ? (
+                <EmailLoginForm onChange={load} />
+              ) : (
+                <p>現在、ログインを利用できません。</p>
+              )}
+            </section>
           )}
           {link && (
             <article className="request-detail" aria-label="依頼">
@@ -469,6 +529,17 @@ export function RequestLinkLanding({
                 </div>
               )}
             </article>
+          )}
+          {link && link.delivery === 'email' && blocked !== null && (
+            <p className="hint">
+              <button
+                className="text-button"
+                disabled={actions.busy}
+                onClick={() => void toggleBlocked()}
+              >
+                {blocked ? 'メールでの依頼を再び受け取る' : '今後、メールでの依頼を受け取らない'}
+              </button>
+            </p>
           )}
           {link && <p className="private-link-note">このリンクは第三者に共有しないでください</p>}
           {actions.error && !link && (

@@ -68,7 +68,16 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     maxAge: 600,
     secure: secureCookies,
   };
-  const links = new RequestLinkService(service, auth);
+  const links = new RequestLinkService(service, auth, options.emailDelivery);
+  const pageOrigin = (request: FastifyRequest) => publicOrigin ?? `http://${request.headers.host}`;
+  const optionalIdentity = (request: FastifyRequest) => {
+    try {
+      return identity(request);
+    } catch (error) {
+      if (error instanceof DomainError && error.statusCode === 401) return undefined;
+      throw error;
+    }
+  };
   await app.register(cookie);
   app.addHook('onRequest', async (request, reply) => {
     if (
@@ -112,14 +121,6 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
   });
   const actor = (request: FastifyRequest): string => auth.actor(request.cookies[sessionCookieName]);
   const identity = (request: FastifyRequest) => auth.identity(request.cookies[sessionCookieName]);
-  const optionalAccount = (request: FastifyRequest) => {
-    try {
-      return identity(request).account;
-    } catch (error) {
-      if (error instanceof DomainError && error.statusCode === 401) return undefined;
-      throw error;
-    }
-  };
   const login = (request: FastifyRequest, reply: FastifyReply, persona: DemoPersona) => {
     auth.logout(request.cookies[sessionCookieName]);
     const token = auth.demoLogin(persona);
@@ -314,6 +315,8 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
           additionalProperties: false,
           required: ['brief', 'amount', 'visibility', 'agreeToRules'],
           properties: {
+            delivery: { enum: ['self', 'email'] },
+            recipientEmail: { type: 'string', maxLength: 254 },
             brief: { type: 'string', minLength: 1, maxLength: service.policy.maximumBriefLength },
             amount: {
               type: 'integer',
@@ -326,17 +329,53 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
         },
       },
     },
-    async (request, reply) =>
-      reply.code(201).send(links.create(actor(request), key(request), request.body)),
+    async (request, reply) => {
+      const user = actor(request);
+      const created = links.create(user, key(request), request.body);
+      if (created.link.delivery !== 'email') return reply.code(201).send(created);
+      if (created.token)
+        await links.send(user, created.link.id, created.token, pageOrigin(request), true);
+      return reply.code(201).send({ link: links.get(user, created.link.id) });
+    },
   );
-  app.post<{ Params: { id: string } }>('/api/links/:id/reissue', async (request) =>
-    links.reissue(actor(request), request.params.id, key(request)),
-  );
+  app.post<{ Params: { id: string } }>('/api/links/:id/reissue', async (request) => {
+    const user = actor(request);
+    const result = links.reissue(user, request.params.id, key(request));
+    if (result.link.delivery !== 'email') return result;
+    if (result.token)
+      await links.send(user, result.link.id, result.token, pageOrigin(request), false);
+    return { link: links.get(user, result.link.id) };
+  });
   app.post<{ Params: { id: string } }>('/api/links/:id/withdraw', async (request) =>
     links.withdraw(actor(request), request.params.id, key(request)),
   );
-  app.get('/api/links/by-token', async (request) =>
-    links.read(linkToken(request), optionalAccount(request)),
+  app.get('/api/links/by-token', async (request) => {
+    const who = optionalIdentity(request);
+    return links.read(linkToken(request), who?.account, who?.email);
+  });
+  app.get('/api/links/optout', async (request) => {
+    const who = identity(request);
+    if (!who.email) throw new DomainError('EMAIL_REQUIRED', 'メールでログインしてください。', 403);
+    return links.optout(who.email);
+  });
+  app.post<{ Body: { blocked: boolean } }>(
+    '/api/links/optout',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['blocked'],
+          additionalProperties: false,
+          properties: { blocked: { type: 'boolean' } },
+        },
+      },
+    },
+    async (request) => {
+      const who = identity(request);
+      if (!who.email)
+        throw new DomainError('EMAIL_REQUIRED', 'メールでログインしてください。', 403);
+      return links.setOptout(who.email, request.body.blocked);
+    },
   );
   app.post<{ Body: { agreeToRules: boolean } }>(
     '/api/links/by-token/accept',
@@ -350,17 +389,21 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
         },
       },
     },
-    async (request) =>
-      links.accept(
-        identity(request).account,
+    async (request) => {
+      const who = identity(request);
+      return links.accept(
+        who.account,
         linkToken(request),
         key(request),
         request.body.agreeToRules,
-      ),
+        who.email,
+      );
+    },
   );
-  app.post('/api/links/by-token/decline', async (request) =>
-    links.decline(linkToken(request), key(request)),
-  );
+  app.post('/api/links/by-token/decline', async (request) => {
+    const who = optionalIdentity(request);
+    return links.decline(linkToken(request), key(request), who?.account, who?.email);
+  });
   const expirationTimer = setInterval(() => {
     try {
       links.expire();

@@ -76,7 +76,7 @@ test('メールの確認コードを一度だけ使って本人のセッショ�
   try {
     const challenge = await s.flow.start(' Sender+Art@Example.test ');
     assert.equal(s.mailbox.messages[0]!.to, 'sender+art@example.test');
-    assert.match(s.mailbox.messages[0]!.code, /^\d{8}$/);
+    assert.match(s.mailbox.messages[0]!.code!, /^\d{8}$/);
     assert.equal(s.store.db.prepare('SELECT COUNT(*) AS n FROM users').get()!.n, 0);
     assert.equal(s.store.db.prepare('SELECT COUNT(*) AS n FROM sessions').get()!.n, 0);
     const code = s.mailbox.code('sender+art@example.test');

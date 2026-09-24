@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  LinkDelivery,
   RequestLinkInput,
   RequestLinkResult,
   RequestLinkState,
@@ -9,6 +10,7 @@ import type {
 } from '../shared.js';
 import { AuthService, hashToken, isToken, newToken } from './auth.js';
 import { commandFingerprint } from './fingerprint.js';
+import { isValidEmail, normalizeEmail, type EmailDelivery } from './email-auth.js';
 import { RequestService, DomainError } from './service.js';
 
 const DAY = 86_400_000;
@@ -19,6 +21,8 @@ interface LinkRow {
   recipient_provider: string;
   recipient_subject: string;
   recipient_name: string;
+  delivery: LinkDelivery;
+  recipient_email: string | null;
   brief: string;
   amount: number;
   visibility: Visibility;
@@ -38,6 +42,20 @@ const unavailable = (): never => {
   );
 };
 const socialActor = (account: SocialAccount) => JSON.stringify([account.provider, account.subject]);
+const mailUnavailable = () =>
+  new DomainError(
+    'EMAIL_UNAVAILABLE',
+    'メールを送信できませんでした。時間をおいてお試しください。',
+    503,
+  );
+const formatDate = (value: number) =>
+  new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(value);
 
 export class RequestLinkService {
   private readonly store;
@@ -45,6 +63,7 @@ export class RequestLinkService {
   constructor(
     private readonly requests: RequestService,
     private readonly auth: AuthService,
+    private readonly mail?: EmailDelivery,
   ) {
     this.store = requests.store;
     this.clock = requests.clock;
@@ -68,9 +87,22 @@ export class RequestLinkService {
         .get(hashToken(token)) as unknown as LinkRow | undefined) ?? unavailable()
     );
   }
-  private accessible(token: string, account?: SocialAccount): LinkRow {
+  /** Links mailed by the service open only for the addressed mailbox. */
+  private addressed(row: LinkRow, account?: SocialAccount, email?: string) {
+    if (row.delivery !== 'email') return;
+    if (!account)
+      throw new DomainError(
+        'LINK_LOGIN_REQUIRED',
+        'この依頼は、宛先のメールアドレスでログインすると開けます。',
+        401,
+      );
+    if (account.provider !== 'email' || normalizeEmail(email ?? '') !== row.recipient_email)
+      throw new DomainError('LINK_OTHER_RECIPIENT', 'この依頼は別のメールアドレス宛です。', 403);
+  }
+  private accessible(token: string, account?: SocialAccount, email?: string): LinkRow {
     const row = this.byToken(token);
     if (row.state === 'cancelled') unavailable();
+    this.addressed(row, account, email);
     if (
       row.state === 'accepted' &&
       (!account ||
@@ -94,6 +126,8 @@ export class RequestLinkService {
     const request = row.request_id ? this.requests.get(row.client_id, row.request_id) : null;
     return {
       id: row.id,
+      delivery: row.delivery,
+      recipientEmail: sender ? row.recipient_email : null,
       recipientName: row.recipient_name,
       clientName: !sender && row.visibility === 'anonymous' ? '匿名の依頼者' : client.name,
       brief: row.brief,
@@ -144,9 +178,12 @@ export class RequestLinkService {
       .all(actor) as unknown as LinkRow[];
     return rows.map((row) => this.view(row, true));
   }
-  read(token: string, account?: SocialAccount): RequestLinkView {
+  read(token: string, account?: SocialAccount, email?: string): RequestLinkView {
     this.expire();
-    return this.store.transaction(() => this.view(this.accessible(token, account), false));
+    return this.store.transaction(() => this.view(this.accessible(token, account, email), false));
+  }
+  get(actor: string, id: string): RequestLinkView {
+    return this.view(this.owner(actor, id), true);
   }
   create(actor: string, key: string, input: RequestLinkInput): RequestLinkResult {
     this.requests.session(actor);
@@ -161,7 +198,8 @@ export class RequestLinkService {
       input.amount < policy.minimumAmount ||
       input.amount > policy.maximumAmount ||
       !['public', 'anonymous', 'hidden'].includes(input.visibility) ||
-      input.agreeToRules !== true
+      input.agreeToRules !== true ||
+      !['self', 'email', undefined].includes(input.delivery)
     ) {
       throw new DomainError(
         'INVALID_INPUT',
@@ -169,12 +207,20 @@ export class RequestLinkService {
         400,
       );
     }
+    const delivery: LinkDelivery = input.delivery ?? 'self';
+    const recipientEmail = delivery === 'email' ? normalizeEmail(input.recipientEmail ?? '') : null;
+    if (delivery === 'email' && !isValidEmail(recipientEmail!))
+      throw new DomainError('INVALID_EMAIL', '相手のメールアドレスを正しく入力してください。', 400);
+    if (input.visibility === 'anonymous' && delivery !== 'email')
+      throw new DomainError('INVALID_INPUT', '匿名の依頼は、メールで送る場合にだけ選べます。', 400);
     const normalized = {
       brief: input.brief.trim(),
       amount: input.amount,
       visibility: input.visibility,
       agreeToRules: true,
       access: 'link',
+      delivery,
+      recipientEmail,
     };
     const result = this.command(`user:${actor}`, 'create', key, normalized, () => {
       const now = this.clock();
@@ -196,6 +242,17 @@ export class RequestLinkService {
           429,
         );
       }
+      if (recipientEmail) {
+        if (this.optout(recipientEmail).blocked)
+          throw new DomainError('RECIPIENT_UNAVAILABLE', 'この宛先には送れません。', 409);
+        const duplicate = this.store.db
+          .prepare(
+            "SELECT 1 FROM request_links WHERE client_id = ? AND recipient_email = ? AND state = 'pending'",
+          )
+          .get(actor, recipientEmail);
+        if (duplicate)
+          throw new DomainError('DUPLICATE_LINK', 'この宛先には受諾待ちの依頼があります。', 409);
+      }
       if (this.requests.mock.failAuthorization)
         throw new DomainError('PAYMENT_DECLINED', '支払いを確保できませんでした。', 422);
       const id = randomUUID();
@@ -205,12 +262,14 @@ export class RequestLinkService {
       this.store.db
         .prepare(
           `INSERT INTO request_links (id, client_id, recipient_provider, recipient_subject, recipient_name,
-        brief, amount, visibility, state, created_at, expires_at, deliver_by, token_hash)
-        VALUES (?, ?, '', '', '', ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+        delivery, recipient_email, brief, amount, visibility, state, created_at, expires_at, deliver_by, token_hash)
+        VALUES (?, ?, '', '', '', ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
         )
         .run(
           id,
           actor,
+          delivery,
+          recipientEmail,
           normalized.brief,
           input.amount,
           input.visibility,
@@ -278,11 +337,12 @@ export class RequestLinkService {
     });
     return this.view(this.row(id), true);
   }
-  decline(token: string, key: string): { ok: true } {
+  decline(token: string, key: string, account?: SocialAccount, email?: string): { ok: true } {
     this.expire();
     return this.store.transaction(() => {
       const row = this.byToken(token);
       if (row.state !== 'pending' && row.cancelled_reason !== 'declined') unavailable();
+      this.addressed(row, account, email);
       this.command(`link:${hashToken(token)}`, `decline:${row.id}`, key, {}, () => {
         this.pending(row);
         this.cancel(row, 'declined', 'link-recipient');
@@ -291,10 +351,16 @@ export class RequestLinkService {
       return { ok: true };
     });
   }
-  accept(account: SocialAccount, token: string, key: string, agreed: boolean): RequestLinkView {
+  accept(
+    account: SocialAccount,
+    token: string,
+    key: string,
+    agreed: boolean,
+    email?: string,
+  ): RequestLinkView {
     this.expire();
     return this.store.transaction(() => {
-      const row = this.accessible(token, account);
+      const row = this.accessible(token, account, email);
       if (agreed !== true)
         throw new DomainError('RULES_REQUIRED', '依頼のルールへの同意が必要です。', 400);
       this.command(socialActor(account), `accept:${row.id}`, key, { agreed: true }, () => {
@@ -320,6 +386,52 @@ export class RequestLinkService {
         return { id: row.id };
       });
       return this.view(this.row(row.id), false);
+    });
+  }
+  /** Mails the link to its recipient. A failed first delivery releases the hold so no money stays held for an unreachable address. */
+  async send(actor: string, id: string, token: string, origin: string, first: boolean) {
+    const row = this.owner(actor, id);
+    if (row.delivery !== 'email' || !row.recipient_email) return;
+    if (!this.mail) throw mailUnavailable();
+    const client = this.requests.session(row.client_id);
+    const from = row.visibility === 'anonymous' ? '匿名の依頼者' : client.name;
+    try {
+      await this.mail({
+        to: row.recipient_email,
+        subject: 'Favor 制作の依頼が届いています',
+        text: `${from}から制作の依頼が届いています。\n\n内容と金額は次のリンクで確認できます。受けるかどうかは自由に選べます。\n${origin}/link#${token}\n\n受諾期限：${formatDate(row.expires_at)}\n\nこのリンクは、宛先のメールアドレスでログインすると開けます。\n心当たりがない場合は、このメールを破棄してください。今後メールで依頼を受け取らない設定は、リンク先で行えます。`,
+      });
+    } catch {
+      if (first) this.store.transaction(() => this.cancel(this.row(id), 'undeliverable', 'system'));
+      throw mailUnavailable();
+    }
+    this.event(id, 'system', first ? 'mail' : 'remail');
+  }
+  optout(email: string): { blocked: boolean } {
+    const row = this.store.db
+      .prepare('SELECT 1 FROM link_optouts WHERE email = ?')
+      .get(normalizeEmail(email));
+    return { blocked: Boolean(row) };
+  }
+  setOptout(email: string, blocked: boolean): { blocked: boolean } {
+    const normalized = normalizeEmail(email);
+    if (!isValidEmail(normalized))
+      throw new DomainError('INVALID_EMAIL', 'メールアドレスを確認してください。', 400);
+    return this.store.transaction(() => {
+      if (!blocked) {
+        this.store.db.prepare('DELETE FROM link_optouts WHERE email = ?').run(normalized);
+        return { blocked: false };
+      }
+      this.store.db
+        .prepare('INSERT OR IGNORE INTO link_optouts VALUES (?, ?)')
+        .run(normalized, this.clock());
+      const rows = this.store.db
+        .prepare(
+          "SELECT * FROM request_links WHERE delivery = 'email' AND recipient_email = ? AND state = 'pending'",
+        )
+        .all(normalized) as unknown as LinkRow[];
+      for (const row of rows) this.cancel(row, 'recipient_blocked', 'link-recipient');
+      return { blocked: true };
     });
   }
   expire(): number {

@@ -10,7 +10,7 @@ export function resendDelivery(
 ): EmailDelivery {
   if (!apiKey.trim() || !from.trim() || /[\r\n]/.test(from))
     throw new Error('RESEND_API_KEY and FAVOR_EMAIL_FROM are required.');
-  return async ({ to, code }) => {
+  return async ({ to, subject, text }) => {
     const response = await request('https://api.resend.com/emails', {
       method: 'POST',
       redirect: 'error',
@@ -19,8 +19,8 @@ export function resendDelivery(
       body: JSON.stringify({
         from,
         to: [to],
-        subject: 'Favor 確認コード',
-        text: `確認コード：${code}\n\n10分以内に、メールアドレスを入力した画面へ入力してください。\n心当たりがなければ、このメールは破棄してください。`,
+        subject,
+        text,
       }),
     });
     if (!response.ok) throw new Error('Email delivery failed.');

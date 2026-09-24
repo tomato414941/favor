@@ -3,11 +3,15 @@ export type RequestState = 'accepting' | 'accepted' | 'delivered' | 'cancelled';
 export type PaymentState = 'authorized' | 'captured' | 'released' | 'refunded';
 export type Role = 'client' | 'creator';
 
+export type LinkDelivery = 'self' | 'email';
 export interface RequestLinkInput {
   brief: string;
   amount: number;
   visibility: Visibility;
   agreeToRules: boolean;
+  /** self: the client hands over the URL. email: the service mails it to recipientEmail. */
+  delivery?: LinkDelivery;
+  recipientEmail?: string;
 }
 export interface UploadInput {
   name: string;
@@ -59,6 +63,9 @@ export interface AuthOptions {
 export type RequestLinkState = 'pending' | 'accepted' | 'cancelled';
 export interface RequestLinkView {
   id: string;
+  delivery: LinkDelivery;
+  /** Shown to the sender only. */
+  recipientEmail: string | null;
   recipientName: string;
   clientName: string;
   brief: string;

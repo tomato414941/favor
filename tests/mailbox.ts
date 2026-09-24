@@ -1,14 +1,16 @@
 import { AuthService } from '../src/server/auth.js';
-import { EmailAuth, type EmailDelivery } from '../src/server/email-auth.js';
+import { EmailAuth, type EmailDelivery, type EmailMessage } from '../src/server/email-auth.js';
 
 export class Mailbox {
-  readonly messages: { to: string; code: string }[] = [];
+  readonly messages: EmailMessage[] = [];
   readonly deliver: EmailDelivery = async (message) => {
     this.messages.push(message);
   };
   code(email: string): string {
-    const message = this.messages.findLast((item) => item.to === email.trim().toLowerCase());
-    if (!message) throw new Error('No verification email was delivered.');
+    const message = this.messages.findLast(
+      (item) => item.to === email.trim().toLowerCase() && Boolean(item.code),
+    );
+    if (!message?.code) throw new Error('No verification email was delivered.');
     return message.code;
   }
   async login(auth: AuthService, email: string, previous?: string): Promise<string> {

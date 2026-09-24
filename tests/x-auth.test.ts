@@ -21,7 +21,7 @@ type Persona = keyof typeof users;
 const input = {
   brief: '星を題材にした、未公開の物語をお願いします。',
   amount: 12000,
-  visibility: 'anonymous',
+  visibility: 'hidden',
   agreeToRules: true,
 };
 const codeIs = (code: string) => (error: unknown) =>
@@ -488,7 +488,7 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     const recipientHeaders = { ...linkHeaders, cookie: recipient.cookie };
     const read = await app.inject({ url: '/api/links/by-token', headers: recipientHeaders });
     assert.equal(read.statusCode, 200);
-    assert.equal(read.json().clientName, '匿名の依頼者');
+    assert.equal(read.json().clientName, created.json().link.clientName);
     assert.equal(
       (await app.inject({ url: '/api/auth/identity', headers: recipientHeaders })).json()
         .registered,

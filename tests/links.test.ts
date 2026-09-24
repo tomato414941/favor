@@ -16,7 +16,7 @@ const key = () => randomUUID();
 const input: RequestLinkInput = {
   brief: '非公開の夜空の物語をお願いします。',
   amount: 12000,
-  visibility: 'anonymous',
+  visibility: 'hidden',
   agreeToRules: true,
 };
 const errorCode = (code: string) => (error: unknown) =>
@@ -53,7 +53,7 @@ test('秘密のリンクから登録前に依頼内容と金額を確認する',
     const view = s.links.read(created.token!);
     assert.equal(view.brief, input.brief);
     assert.equal(view.amount, input.amount);
-    assert.equal(view.clientName, '匿名の依頼者');
+    assert.equal(view.clientName, '青葉 / aoba');
     assert.equal(view.paymentState, 'authorized');
     assert.equal(s.auth.identity(s.recipientSession).registered, false);
     assert.throws(() => s.links.read(created.link.id), errorCode('LINK_UNAVAILABLE'));

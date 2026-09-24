@@ -54,7 +54,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
     const body = {
       brief: '星を題材にした物語をお願いします。',
       amount: 12000,
-      visibility: 'anonymous',
+      visibility: 'hidden',
       agreeToRules: true,
     };
     for (const invalid of [

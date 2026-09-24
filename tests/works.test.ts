@@ -7,6 +7,7 @@ import { AuthService } from '../src/server/auth.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
+import { Mailbox } from './mailbox.js';
 
 const notFound = (error: unknown) => error instanceof DomainError && error.code === 'NOT_FOUND';
 const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
@@ -18,10 +19,11 @@ const files = (image: string) => [
 test('公開設定の納品済み依頼を作品として公開し、最新版の画像だけをログインなしで配信する', async () => {
   const store = new Store();
   const service = new RequestService(store);
-  const auth = new AuthService(store, Date.now, { allowDemo: true });
+  const auth = new AuthService(store, Date.now, { allowDemo: true, allowEmail: true });
   auth.demoLogin('client');
   const recipient = auth.identity(auth.demoLogin('creator')).account;
-  const links = new RequestLinkService(service, auth);
+  const mailbox = new Mailbox();
+  const links = new RequestLinkService(service, auth, mailbox.deliver);
   const make = (visibility: Visibility) => {
     const link = links.create('demo-client', randomUUID(), {
       brief: `${visibility}の依頼`,
@@ -33,10 +35,27 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
   };
   const shown = make('public');
   const hidden = make('hidden');
-  const anonymous = make('anonymous');
+  const maker = auth.identity(await mailbox.login(auth, 'maker@example.test'));
+  const mailed = links.create('demo-client', randomUUID(), {
+    brief: 'anonymousの依頼',
+    amount: 12000,
+    visibility: 'anonymous',
+    agreeToRules: true,
+    delivery: 'email',
+    recipientEmail: 'maker@example.test',
+  });
+  const anonymous = links.accept(
+    maker.account,
+    mailed.token!,
+    randomUUID(),
+    true,
+    maker.email,
+  ).requestId!;
+  const makerId = auth.actor(await mailbox.login(auth, 'maker@example.test'));
   assert.throws(() => service.publicWork(shown), notFound);
-  for (const id of [shown, hidden, anonymous])
+  for (const id of [shown, hidden])
     service.deliver('demo-creator', id, randomUUID(), files('絵.png'));
+  service.deliver(makerId, anonymous, randomUUID(), files('絵.png'));
 
   const ids = service.publicWorks().map((work) => work.id);
   assert.deepEqual(ids.sort(), [shown, anonymous].sort());

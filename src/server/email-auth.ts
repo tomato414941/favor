@@ -2,9 +2,16 @@ import { randomInt, timingSafeEqual } from 'node:crypto';
 import { AuthService, hashToken, isToken, newToken } from './auth.js';
 import { DomainError } from './service.js';
 
-export type EmailDelivery = (message: { to: string; code: string }) => Promise<void>;
-const normalize = (email: string) => (typeof email === 'string' ? email.trim().toLowerCase() : '');
-const emailValid = (email: string) =>
+export interface EmailMessage {
+  to: string;
+  subject: string;
+  text: string;
+  code?: string;
+}
+export type EmailDelivery = (message: EmailMessage) => Promise<void>;
+export const normalizeEmail = (email: string) =>
+  typeof email === 'string' ? email.trim().toLowerCase() : '';
+export const isValidEmail = (email: string) =>
   email.length <= 254 &&
   email.split('@')[0]!.length <= 64 &&
   /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
@@ -20,8 +27,8 @@ export class EmailAuth {
   ) {}
 
   async start(input: string, previous?: string): Promise<string> {
-    const email = normalize(input);
-    if (!emailValid(email))
+    const email = normalizeEmail(input);
+    if (!isValidEmail(email))
       throw new DomainError('INVALID_EMAIL', 'メールアドレスを正しく入力してください。', 400);
     this.auth.limit(`email-send:${email}`, 3);
     this.auth.limit('email-send:all', 100);
@@ -40,7 +47,12 @@ export class EmailAuth {
       );
     });
     try {
-      await this.deliver({ to: email, code });
+      await this.deliver({
+        to: email,
+        code,
+        subject: 'Favor 確認コード',
+        text: `確認コード：${code}\n\n10分以内に、メールアドレスを入力した画面へ入力してください。\n心当たりがなければ、このメールは破棄してください。`,
+      });
     } catch {
       db.prepare('DELETE FROM email_challenges WHERE token_hash = ?').run(hashToken(challenge));
       throw new DomainError(

@@ -6,6 +6,7 @@ import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
 import { RequestLinkService } from '../src/server/request-links.js';
+import { Mailbox } from './mailbox.js';
 
 const stores: Store[] = [];
 afterEach(() => {
@@ -21,7 +22,7 @@ function setup(options: ConstructorParameters<typeof RequestService>[3] = {}) {
     { acceptanceMs: 1000, authorizationMs: 1000, deliveryMs: 10000 },
     options,
   );
-  const auth = new AuthService(store, () => now, { allowDemo: true });
+  const auth = new AuthService(store, () => now, { allowDemo: true, allowEmail: true });
   auth.demoLogin('client');
   const recipient = auth.identity(auth.demoLogin('creator')).account;
   const stranger = auth.registerAccount(auth.demoLogin('other'));
@@ -46,6 +47,8 @@ function setup(options: ConstructorParameters<typeof RequestService>[3] = {}) {
   return {
     store,
     service,
+    auth,
+    links,
     input,
     create,
     effects,
@@ -156,12 +159,21 @@ test('当事者と役割を確認して依頼の閲覧・納品・取得を許�
   throwsCode(() => service.download(stranger, id, delivery.files[0]!.id), 'NOT_FOUND');
   assert.equal(service.publicWorks().length, 0);
 });
-test('匿名依頼の公開情報と当事者の支払情報を区別して表示する', () => {
-  const { create, service } = setup();
-  const { id } = create({ visibility: 'anonymous' });
-  assert.equal(service.get('demo-creator', id).clientName, '匿名の依頼者');
-  assert.equal(JSON.stringify(service.list('demo-creator')).includes('demo-client'), false);
-  service.deliver('demo-creator', id, randomUUID(), file);
+test('メールで届けた匿名依頼は、作り手にも公開情報にも依頼者名を出さない', async () => {
+  const { service, auth, links, input } = setup();
+  const mailbox = new Mailbox();
+  const maker = auth.identity(await mailbox.login(auth, 'maker@example.test'));
+  const link = links.create('demo-client', randomUUID(), {
+    ...input,
+    visibility: 'anonymous',
+    delivery: 'email',
+    recipientEmail: 'maker@example.test',
+  });
+  const id = links.accept(maker.account, link.token!, randomUUID(), true, maker.email).requestId!;
+  const makerId = auth.actor(await mailbox.login(auth, 'maker@example.test'));
+  assert.equal(service.get(makerId, id).clientName, '匿名の依頼者');
+  assert.equal(JSON.stringify(service.list(makerId)).includes('demo-client'), false);
+  service.deliver(makerId, id, randomUUID(), file);
   const view = service.publicWorks()[0]!;
   assert.equal(view.clientName, '匿名の依頼者');
   assert.equal('amount' in view, false);

@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code = '',
   ) {
     super(message);
   }
@@ -40,7 +41,11 @@ export async function api<T>(path: string, { body, key, linkToken }: ApiOptions 
       data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'
         ? data.message
         : '処理を完了できませんでした。もう一度お試しください。';
-    throw new ApiError(message, response.status);
+    const code =
+      data && typeof data === 'object' && 'code' in data && typeof data.code === 'string'
+        ? data.code
+        : '';
+    throw new ApiError(message, response.status, code);
   }
   return data as T;
 }

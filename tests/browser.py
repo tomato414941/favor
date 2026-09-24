@@ -246,6 +246,32 @@ def main():
             layout(visiting, 'declined')
             expect(card2).to_contain_text('支払確保を解除しました', timeout=15000)
 
+            brief4 = 'メールで届ける匿名の依頼です。'
+            compose(page, brief4)
+            page.get_by_label('相手のメールアドレス', exact=True).fill(receiver_email)
+            page.get_by_role('radio', name='匿名').check()
+            page.get_by_role('button', name='メールで送る', exact=True).click()
+            expect(page.get_by_role('status')).to_contain_text('メールで送りました')
+            card4 = page.get_by_role('article', name='依頼リンク').filter(has_text=brief4)
+            expect(card4).to_contain_text(receiver_email)
+            expect(card4.get_by_role('button', name='メールを送り直す')).to_be_visible()
+            mail4 = json.loads((Path(os.environ['FAVOR_TEST_MAIL_DIR']) / (hashlib.sha256(receiver_email.encode()).hexdigest() + '.json')).read_text())
+            assert '匿名の依頼者' in mail4['text']
+            url4 = re.search(r'https?://\S+/link#[A-Za-z0-9_-]{43}', mail4['text']).group(0)
+            tokens.append(url4.split('link#')[1])
+            visiting.goto(url4)
+            expect(visiting.get_by_role('heading', name='宛先のメールアドレスでログイン')).to_be_visible()
+            layout(visiting, 'mailed-login')
+            receiving.goto(url4)
+            mailed = receiving.get_by_role('article', name='依頼', exact=True)
+            expect(mailed).to_contain_text(brief4)
+            expect(mailed).to_contain_text('匿名の依頼者からの依頼')
+            expect(receiving.get_by_role('button', name='今後、メールでの依頼を受け取らない')).to_be_visible()
+            layout(receiving, 'mailed-link')
+            page.once('dialog', lambda dialog: dialog.accept())
+            card4.get_by_role('button', name='依頼を取り消す', exact=True).click()
+            expect(card4).to_contain_text('支払確保を解除しました')
+
             brief3 = '取り消す依頼です。'
             compose(page, brief3)
             page.get_by_role('button', name='リンクを作成', exact=True).click()
