@@ -216,8 +216,7 @@ def main():
             expect(visiting.get_by_role('status')).to_contain_text('依頼を見送りました')
             assert visitor.request.get(f'{base}/api/auth/identity').json() is None
             layout(visiting, 'declined')
-            page.get_by_role('button', name='最新の状態を確認').click()
-            expect(card2).to_contain_text('支払確保を解除しました')
+            expect(card2).to_contain_text('支払確保を解除しました', timeout=15000)
 
             brief3 = '取り消す依頼です。'
             compose(page, brief3)

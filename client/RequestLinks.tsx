@@ -238,13 +238,6 @@ export function RequestLinks({
         <>
           <div className="request-link-list-heading">
             <h2>送った依頼リンク</h2>
-            <button
-              className="text-button"
-              disabled={actions.busy}
-              onClick={() => void actions.run(refresh)}
-            >
-              最新の状態を確認
-            </button>
           </div>
           {pending.length ? (
             <div className="request-link-list">
