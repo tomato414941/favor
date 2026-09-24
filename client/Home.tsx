@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import '@fontsource/newsreader/500-italic.css';
-import type { WorkView } from '../src/shared';
+import type { IdentitySession, WorkView } from '../src/shared';
 import { api } from './api';
 import { Arrow, Link } from './ui';
 import './Home.css';
 
-export function Home() {
+export function Home({ identity }: { identity: IdentitySession | null }) {
   const [works, setWorks] = useState<WorkView[] | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -28,8 +28,12 @@ export function Home() {
           Favor
         </Link>
         <nav aria-label="メインナビゲーション">
-          <Link href="/works">作品</Link>
-          <Link href="/sent">ログイン</Link>
+          <Link href="/works">公開作品</Link>
+          {identity?.registered ? (
+            <Link href="/me/sent">自分のページへ</Link>
+          ) : (
+            <Link href="/login">ログイン</Link>
+          )}
         </nav>
       </header>
       <main className="home-shell">
@@ -37,7 +41,7 @@ export function Home() {
           <div className="home-intro">
             <h1 id="home-title">Favor</h1>
             <div className="home-actions">
-              <Link className="home-create" href="/new">
+              <Link className="home-create" href="/me/new">
                 お願いを書く <Arrow />
               </Link>
               <Link className="home-browse" href="/works">
@@ -71,7 +75,7 @@ export function Home() {
         </section>
         <section className="home-works" aria-labelledby="home-works-title">
           <div className="home-section-heading">
-            <h2 id="home-works-title">作品</h2>
+            <h2 id="home-works-title">公開作品</h2>
             <Link href="/works">
               一覧へ <Arrow />
             </Link>

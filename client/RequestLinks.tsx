@@ -522,7 +522,7 @@ export function RequestLinkLanding({
               )}
               {link.requestId && (
                 <div className="detail-actions">
-                  <Link className="primary" href={`/requests/${link.requestId}`}>
+                  <Link className="primary" href={`/me/requests/${link.requestId}`}>
                     受けた依頼へ
                     <Arrow />
                   </Link>
@@ -544,7 +544,7 @@ export function RequestLinkLanding({
           {link && <p className="private-link-note">このリンクは第三者に共有しないでください</p>}
           {actions.error && !link && (
             <p className="hint">
-              <a href="/">登録済みの方は、ログインして受けた依頼を確認できます。</a>
+              <Link href="/login">登録済みの方は、ログインして受けた依頼を確認できます。</Link>
             </p>
           )}
         </div>

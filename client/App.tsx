@@ -10,29 +10,38 @@ import { Link } from './ui';
 
 const initialLocation = restoreXReturn();
 const location = () => `${window.location.pathname}${window.location.hash}`;
+const afterLoginKey = 'favor.after-login';
 
 type Route =
   | { kind: 'home' }
+  | { kind: 'login' }
   | { kind: 'works' }
   | { kind: 'work'; id: string }
   | { kind: 'link'; token: string }
-  | { kind: 'workspace'; page: Page; requestId: string | null }
+  | { kind: 'me'; page: Page; requestId: string | null }
   | { kind: 'missing' };
 
 function parse(value: string): Route {
   const url = new URL(value, window.location.origin);
   const path = url.pathname.replace(/\/+$/, '') || '/';
   if (path === '/') return { kind: 'home' };
+  if (path === '/login') return { kind: 'login' };
   if (path === '/works') return { kind: 'works' };
   const work = /^\/works\/([A-Za-z0-9-]{1,100})$/.exec(path);
   if (work) return { kind: 'work', id: work[1]! };
   if (path === '/link') return { kind: 'link', token: url.hash.slice(1) };
-  if (path === '/new') return { kind: 'workspace', page: 'new', requestId: null };
-  if (path === '/sent') return { kind: 'workspace', page: 'sent', requestId: null };
-  if (path === '/received') return { kind: 'workspace', page: 'received', requestId: null };
-  const request = /^\/requests\/([A-Za-z0-9-]{1,100})$/.exec(path);
-  if (request) return { kind: 'workspace', page: 'request', requestId: request[1]! };
+  if (path === '/me' || path === '/me/sent') return { kind: 'me', page: 'sent', requestId: null };
+  if (path === '/me/new') return { kind: 'me', page: 'new', requestId: null };
+  if (path === '/me/received') return { kind: 'me', page: 'received', requestId: null };
+  if (path === '/me/works') return { kind: 'me', page: 'works', requestId: null };
+  const request = /^\/me\/requests\/([A-Za-z0-9-]{1,100})$/.exec(path);
+  if (request) return { kind: 'me', page: 'request', requestId: request[1]! };
   return { kind: 'missing' };
+}
+
+function replace(path: string) {
+  window.history.replaceState(null, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 export function App() {
@@ -47,7 +56,6 @@ export function App() {
     setAttempt((value) => value + 1);
   }, []);
   const route = parse(current);
-  const publicPage = route.kind === 'works' || route.kind === 'work' || route.kind === 'link';
   useEffect(() => {
     let active = true;
     setReady(false);
@@ -68,7 +76,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [attempt, publicPage, route.kind === 'link' ? route.token : '']);
+  }, [attempt, route.kind, route.kind === 'link' ? route.token : '']);
   useEffect(() => {
     const change = () => setCurrent(location());
     window.addEventListener('popstate', change);
@@ -78,8 +86,33 @@ export function App() {
       window.removeEventListener('hashchange', change);
     };
   }, []);
-  if (route.kind === 'works') return <WorksList />;
-  if (route.kind === 'work') return <WorkPage key={route.id} id={route.id} />;
+  const signedIn = options?.mode === 'demo' || identity?.registered === true;
+  // Own pages need a signed-in person; the login page sends them back afterwards.
+  useEffect(() => {
+    if (!ready || !options) return;
+    if (route.kind === 'me' && !signedIn) {
+      try {
+        if (!sessionStorage.getItem(afterLoginKey)) sessionStorage.setItem(afterLoginKey, current);
+      } catch {
+        /* Returning to the page is a convenience. */
+      }
+      replace('/login');
+    } else if (route.kind === 'login' && signedIn) {
+      let next = '/me/sent';
+      try {
+        const saved = sessionStorage.getItem(afterLoginKey);
+        sessionStorage.removeItem(afterLoginKey);
+        if (saved && /^\/me(\/|$)/.test(saved)) next = saved;
+      } catch {
+        /* Fall back to the sent list. */
+      }
+      replace(next);
+    } else if (window.location.pathname === '/me') replace('/me/sent');
+  }, [ready, options, route.kind, signedIn, current]);
+  const logout = useCallback(async () => {
+    await api('/auth/logout', { body: {} });
+    changed();
+  }, [changed]);
   if (route.kind === 'missing')
     return (
       <main className="shell works-page">
@@ -102,6 +135,11 @@ export function App() {
         )}
       </main>
     );
+  const shown = signedIn ? identity : null;
+  if (route.kind === 'home') return <Home identity={shown} />;
+  if (route.kind === 'works') return <WorksList identity={shown} onLogout={logout} />;
+  if (route.kind === 'work')
+    return <WorkPage key={route.id} id={route.id} identity={shown} onLogout={logout} />;
   if (route.kind === 'link')
     return (
       <RequestLinkLanding
@@ -111,9 +149,7 @@ export function App() {
         initialError={initialLocation.error}
       />
     );
-  if (route.kind === 'home' && options.mode !== 'demo' && !identity && !initialLocation.error)
-    return <Home />;
-  if (options.mode !== 'demo' && !identity?.registered)
+  if (route.kind === 'login' || !signedIn)
     return (
       <AccountEntry
         key={identity?.account.subject ?? 'login'}
@@ -123,15 +159,13 @@ export function App() {
         initialError={initialLocation.error}
       />
     );
-  const page: Page = route.kind === 'workspace' ? route.page : 'new';
-  const requestId = route.kind === 'workspace' ? route.requestId : null;
   return (
     <Workspace
       key={String(attempt)}
-      page={page}
-      requestId={requestId}
+      page={route.page}
+      requestId={route.requestId}
       options={options}
-      email={identity?.email}
+      identity={identity}
       onSessionChange={changed}
     />
   );

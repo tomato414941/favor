@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react';
 import type { AuthOptions, IdentitySession } from '../src/shared';
 import { api } from './api';
-import { Arrow, Link } from './ui';
+import { Arrow } from './ui';
+import { SiteHeader } from './Header';
 
 const returnKey = 'x-login-return';
 const validReturn = (value: string) =>
-  /^(?:\/link#[A-Za-z0-9_-]{43}|\/requests\/[A-Za-z0-9-]{1,100})$/.test(value) ? value : '';
+  /^(?:\/link#[A-Za-z0-9_-]{43}|\/me(?:\/[a-z]+)?(?:\/[A-Za-z0-9-]{1,100})?)$/.test(value)
+    ? value
+    : '';
 
 export async function beginXLogin(returnTo = `${window.location.pathname}${window.location.hash}`) {
   try {
@@ -44,7 +47,7 @@ export function restoreXReturn(): { location: string; error: string } {
   const outcome = current.get('auth');
   if (!outcome)
     return { location: `${window.location.pathname}${window.location.hash}`, error: '' };
-  let location = '/';
+  let location = '/login';
   try {
     const saved = JSON.parse(sessionStorage.getItem(returnKey) ?? 'null');
     if (saved && saved.state === current.get('flow')) {
@@ -54,7 +57,7 @@ export function restoreXReturn(): { location: string; error: string } {
         Date.now() - saved.at < 900_000 &&
         typeof saved.location === 'string'
       )
-        location = validReturn(saved.location) || '/';
+        location = validReturn(saved.location) || '/login';
     }
   } catch {
     /* A regular login remains usable when the return location cannot be restored. */
@@ -255,11 +258,7 @@ export function AccountEntry({
       <div className="demo-banner">
         <span className="demo-mark">試用版</span>実際の支払いは発生しません
       </div>
-      <header className="header shell request-link-header">
-        <a className="wordmark" href="/">
-          Favor
-        </a>
-      </header>
+      <SiteHeader identity={null} active={null} />
       <main className="shell account-layout">
         <section className="account-panel" aria-label={identity ? 'サービスへの登録' : 'ログイン'}>
           <h1>{identity ? '登録内容の確認' : 'ログイン'}</h1>
@@ -299,9 +298,6 @@ export function AccountEntry({
               )}
             </>
           )}
-          <p className="hint">
-            <Link href="/works">公開された作品を見る</Link>
-          </p>
         </section>
       </main>
       <footer className="footer shell">

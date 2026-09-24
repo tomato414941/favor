@@ -1,24 +1,20 @@
 import { useEffect, useState } from 'react';
-import type { WorkView } from '../src/shared';
+import type { IdentitySession, WorkView } from '../src/shared';
 import { api } from './api';
 import { date } from './format';
 import { Link } from './ui';
+import { SiteHeader } from './Header';
 
 const isImage = (name: string) => /\.(png|jpe?g|gif|webp)$/i.test(name);
 
-function Frame({ children }: { children: React.ReactNode }) {
+interface FrameProps {
+  identity: IdentitySession | null;
+  onLogout: () => void;
+}
+function Frame({ children, identity, onLogout }: FrameProps & { children: React.ReactNode }) {
   return (
     <>
-      <header className="header shell">
-        <Link className="wordmark" href="/">
-          Favor
-        </Link>
-        <nav aria-label="メインナビゲーション">
-          <Link href="/works" aria-current="page">
-            作品
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader identity={identity} active="works" onLogout={onLogout} />
       <main className="shell works-page">{children}</main>
       <footer className="footer shell">
         <span className="footer-brand">Favor</span>
@@ -46,7 +42,7 @@ function useLoad<T>(load: () => Promise<T>, deps: unknown[]) {
   return { data, error };
 }
 
-function WorkImages({ work }: { work: WorkView }) {
+export function WorkImages({ work }: { work: WorkView }) {
   const images = work.files.filter((file) => isImage(file.name));
   const others = work.files.filter((file) => !isImage(file.name));
   return (
@@ -66,14 +62,14 @@ function WorkImages({ work }: { work: WorkView }) {
   );
 }
 
-export function WorksList() {
+export function WorksList({ identity, onLogout }: FrameProps) {
   const { data, error } = useLoad(
     () => api<{ works: WorkView[] }>('/works').then((result) => result.works),
     [],
   );
   return (
-    <Frame>
-      <h1>作品</h1>
+    <Frame identity={identity} onLogout={onLogout}>
+      <h1>公開作品</h1>
       {error && (
         <p className="message error" role="alert">
           {error}
@@ -99,10 +95,10 @@ export function WorksList() {
   );
 }
 
-export function WorkPage({ id }: { id: string }) {
+export function WorkPage({ id, identity, onLogout }: FrameProps & { id: string }) {
   const { data: work, error } = useLoad(() => api<WorkView>(`/works/${id}`), [id]);
   return (
-    <Frame>
+    <Frame identity={identity} onLogout={onLogout}>
       {error && (
         <p className="message error" role="alert">
           {error}
