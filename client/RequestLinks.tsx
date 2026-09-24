@@ -200,7 +200,6 @@ export function RequestLinks({
                 <dd>作成から{settings.terms.deliveryDays}日</dd>
               </div>
             </dl>
-            <p className="hint">リンクを再発行しても期限は変わりません。</p>
           </aside>
           <RequestForm settings={settings} busy={busy} submit={submit} />
         </div>
