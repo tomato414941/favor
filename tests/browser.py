@@ -76,6 +76,15 @@ def main():
         visiting = visitor.new_page()
         try:
             page.goto(base)
+            expect(page.get_by_role('heading', name='Favor', exact=True)).to_be_visible()
+            layout(page, 'home')
+            page.get_by_role('link', name='作品を見る', exact=True).click()
+            expect(page.get_by_role('heading', name='作品', exact=True)).to_be_visible()
+            page.go_back()
+            page.get_by_role('link', name='ログイン', exact=True).click()
+            expect(page.get_by_role('form', name='メールでログイン')).to_be_visible()
+            page.go_back()
+            page.get_by_role('link', name='依頼を作る', exact=True).click()
             expect(page.get_by_role('heading', name='ログイン', exact=True)).to_be_visible()
             layout(page, 'registration')
             register(page, sender_email)
@@ -186,7 +195,11 @@ def main():
 
             delivered_id = sender.request.get(f'{base}/api/requests').json()['requests'][0]['id']
             text_id = next(f['id'] for f in sender.request.get(f'{base}/api/requests/{delivered_id}').json()['files'] if f['name'] == '完成版.txt')
-            visiting.goto(f'{base}/works')
+            visiting.goto(base)
+            expect(visiting.get_by_role('heading', name='Favor', exact=True)).to_be_visible()
+            expect(visiting.get_by_role('link', name=re.compile(brief[:10]))).to_be_visible()
+            layout(visiting, 'home-with-work')
+            visiting.get_by_role('link', name='作品を見る', exact=True).click()
             expect(visiting.get_by_role('heading', name='作品', exact=True)).to_be_visible()
             visiting.get_by_role('link', name=re.compile(brief[:10])).click()
             shown = visiting.get_by_role('article', name='作品', exact=True)

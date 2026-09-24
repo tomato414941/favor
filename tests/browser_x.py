@@ -76,6 +76,8 @@ def main():
             page = sender.new_page()
             page.goto(base)
             page.wait_for_load_state("networkidle")
+            expect(page.get_by_role("heading", name="Favor", exact=True)).to_be_visible()
+            page.get_by_role("link", name="依頼を作る", exact=True).click()
             expect(page.get_by_role("heading", name="ログイン", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Xでログイン", exact=True)).to_be_visible()
             assert sender.request.get(f"{base}/api/auth/identity").json() is None

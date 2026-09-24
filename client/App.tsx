@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AuthOptions, IdentitySession } from '../src/shared';
 import { api } from './api';
 import { AccountEntry, restoreXReturn } from './Auth';
+import { Home } from './Home';
 import { WorkPage, WorksList } from './Works';
 import { RequestLinkLanding } from './RequestLinks';
 import { Workspace, type Page } from './Workspace';
@@ -110,6 +111,8 @@ export function App() {
         initialError={initialLocation.error}
       />
     );
+  if (route.kind === 'home' && options.mode !== 'demo' && !identity && !initialLocation.error)
+    return <Home />;
   if (options.mode !== 'demo' && !identity?.registered)
     return (
       <AccountEntry
