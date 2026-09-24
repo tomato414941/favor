@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { AuthService, hashToken, newToken } from '../src/server/auth.js';
 import { buildApp } from '../src/server/app.js';
-import { CommissionService, DomainError } from '../src/server/service.js';
+import { FavorService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { XAuth, XProvider, X_SCOPES, type XConfig, type XFetch } from '../src/server/x-auth.js';
 
 const config: XConfig = {
   clientId: 'fixture-client',
   clientSecret: 'fixture-secret',
-  publicOrigin: 'https://commission.example',
+  publicOrigin: 'https://favor.example',
 };
 const users = {
   sender: { id: '1234567890123456789', username: 'aoba_fixture', name: '青葉' },
@@ -111,11 +111,11 @@ function setup() {
 test('Xの認証設定とコールバックのオリジンを検証する', async () => {
   for (const origin of [
     'http://evil.example',
-    'https://commission.example/',
-    'https://user:pass@commission.example',
-    'https://commission.example/path',
+    'https://favor.example/',
+    'https://user:pass@favor.example',
+    'https://favor.example/path',
     'javascript:alert(1)',
-    'https://commission.example?x=1',
+    'https://favor.example?x=1',
   ]) {
     assert.throws(() => new XProvider({ ...config, publicOrigin: origin }));
   }
@@ -205,7 +205,7 @@ test('Xで登録したアカウントをユーザー名変更後も認証する'
     assert.equal(s.auth.actor(nextSession), user);
     assert.equal(s.auth.identity(nextSession).account.handle, 'renamed_user');
     assert.equal(s.store.db.prepare('SELECT COUNT(*) AS total FROM users').get()!.total, 1);
-    assert.equal(new CommissionService(s.store).session(user).name, '新しい名前');
+    assert.equal(new FavorService(s.store).session(user).name, '新しい名前');
     assert.throws(
       () => new AuthService(s.store, s.auth.clock).identity(nextSession),
       codeIs('UNAUTHORIZED'),
@@ -340,11 +340,11 @@ test('Xの応答を検証して認証エラーを利用者向けに表示する'
 test('HTTPでXログインから依頼リンクの受諾と再試行まで実行する', async () => {
   const store = new Store();
   const fixture = providerFixture();
-  const app = await buildApp(new CommissionService(store), { xProvider: fixture.provider });
+  const app = await buildApp(new FavorService(store), { xProvider: fixture.provider });
   const headers = {
-    host: 'commission.example',
+    host: 'favor.example',
     origin: config.publicOrigin,
-    'x-commission-action': '1',
+    'x-favor-action': '1',
   };
   const cookieValue = (response: Awaited<ReturnType<typeof app.inject>>, name: string) =>
     response.cookies.find((entry) => entry.name === name)?.value;
@@ -358,7 +358,7 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     });
     assert.equal(start.statusCode, 200);
     const url = new URL(start.json().url);
-    const cookie = `__Host-commission_oauth=${cookieValue(start, '__Host-commission_oauth')}`;
+    const cookie = `__Host-favor_oauth=${cookieValue(start, '__Host-favor_oauth')}`;
     assert.match(String(start.headers['set-cookie']), /HttpOnly/);
     assert.match(String(start.headers['set-cookie']), /SameSite=Lax/);
     assert.match(String(start.headers['set-cookie']), /Secure/);
@@ -381,9 +381,9 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.equal(response.headers['referrer-policy'], 'no-referrer');
     assert.match(String(response.headers['set-cookie']), /SameSite=Strict/);
-    const session = cookieValue(response, '__Host-commission_session')!;
+    const session = cookieValue(response, '__Host-favor_session')!;
     assert.match(session, /^[A-Za-z0-9_-]{43}$/);
-    return { cookie: `__Host-commission_session=${session}`, raw: session };
+    return { cookie: `__Host-favor_session=${session}`, raw: session };
   };
   try {
     assert.deepEqual((await app.inject({ url: '/api/auth/options', headers })).json(), {
@@ -406,7 +406,7 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     for (const forged of [
       { ...headers, origin: 'https://evil.example' },
       { ...headers, host: 'evil.example' },
-      { ...headers, 'x-commission-action': '' },
+      { ...headers, 'x-favor-action': '' },
       { ...headers, 'sec-fetch-site': 'cross-site' },
     ]) {
       assert.equal(
@@ -479,7 +479,7 @@ test('HTTPでXログインから依頼リンクの受諾と再試行まで実行
     });
     assert.equal(conflict.statusCode, 409);
     fixture.failure(null);
-    const linkHeaders = { ...headers, 'x-commission-link': token, 'idempotency-key': randomUUID() };
+    const linkHeaders = { ...headers, 'x-favor-link': token, 'idempotency-key': randomUUID() };
     assert.equal(
       (await app.inject({ url: '/api/links/by-token', headers: linkHeaders })).json().brief,
       input.brief,
@@ -579,8 +579,7 @@ test('X認証の有効設定と保存した試行回数に基づいてログイ�
       codeIs('AUTH_DISABLED'),
     );
     await assert.rejects(
-      () =>
-        buildApp(new CommissionService(s.store), { demoAuth: true, xProvider: s.fixture.provider }),
+      () => buildApp(new FavorService(s.store), { demoAuth: true, xProvider: s.fixture.provider }),
       /cannot be enabled together/,
     );
   } finally {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const directory = await mkdtemp(join(tmpdir(), 'commission-e2e-data-'));
+const directory = await mkdtemp(join(tmpdir(), 'favor-e2e-data-'));
 const xAuth = process.argv.includes('--x');
 const probe = createServer();
 probe.listen(0, '127.0.0.1');
@@ -14,8 +14,8 @@ await once(probe, 'listening');
 const port = probe.address().port;
 await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()));
 const server = spawn(process.execPath, xAuth ? ['--import', 'tsx', 'tests/browser_x_server.ts'] : ['dist/server/server/main.js', '--demo'], {
-  env: { ...process.env, COMMISSION_AUTH_MODE: 'email', NODE_ENV: 'test', COMMISSION_MAIL_DELIVERY: 'file', COMMISSION_DATA_DIR: directory, COMMISSION_PORT: String(port),
-    COMMISSION_PUBLIC_ORIGIN: `http://127.0.0.1:${port}`, COMMISSION_TRUST_PROXY: 'none' },
+  env: { ...process.env, FAVOR_AUTH_MODE: 'email', NODE_ENV: 'test', FAVOR_MAIL_DELIVERY: 'file', FAVOR_DATA_DIR: directory, FAVOR_PORT: String(port),
+    FAVOR_PUBLIC_ORIGIN: `http://127.0.0.1:${port}`, FAVOR_TRUST_PROXY: 'none' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
@@ -38,7 +38,7 @@ try {
     await delay(200);
   }
   if (!ready) throw new Error(`Demo server did not start: ${logs}`);
-  browser = spawn('python3', [xAuth ? 'tests/browser_x.py' : 'tests/browser.py', url], { stdio: 'inherit', env: { ...process.env, PYTHONUNBUFFERED: '1', COMMISSION_TEST_MAIL_DIR: join(directory, 'mail') } });
+  browser = spawn('python3', [xAuth ? 'tests/browser_x.py' : 'tests/browser.py', url], { stdio: 'inherit', env: { ...process.env, PYTHONUNBUFFERED: '1', FAVOR_TEST_MAIL_DIR: join(directory, 'mail') } });
   const [code] = await once(browser, 'exit');
   process.exitCode = code ?? 1;
 } catch (error) {

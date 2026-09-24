@@ -4,7 +4,7 @@ import staticFiles from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { RequestLinkInput, UploadInput } from '../shared.js';
-import { CommissionService, DomainError } from './service.js';
+import { FavorService, DomainError } from './service.js';
 import { AuthService, isToken, type DemoPersona } from './auth.js';
 import { RequestLinkService } from './request-links.js';
 import { XAuth, XProvider } from './x-auth.js';
@@ -22,7 +22,7 @@ interface AppOptions {
   trustLoopbackProxy?: boolean;
 }
 
-export async function buildApp(service: CommissionService, options: AppOptions = {}) {
+export async function buildApp(service: FavorService, options: AppOptions = {}) {
   if (options.demoAuth && options.xProvider)
     throw new Error('Demo and X authentication cannot be enabled together.');
   const configuredOrigin = options.publicOrigin ?? options.xProvider?.publicOrigin;
@@ -33,7 +33,7 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   if (options.demoAuth && origin && !['localhost', '127.0.0.1'].includes(origin.hostname))
     throw new Error('Demo authentication is allowed only on loopback.');
   if (options.trustLoopbackProxy && !origin)
-    throw new Error('COMMISSION_PUBLIC_ORIGIN is required when trusting the loopback proxy.');
+    throw new Error('FAVOR_PUBLIC_ORIGIN is required when trusting the loopback proxy.');
   // OAuth query strings and private link headers must not enter request logs.
   const app = Fastify({
     logger: options.logger ?? false,
@@ -51,9 +51,9 @@ export async function buildApp(service: CommissionService, options: AppOptions =
   const x = options.xProvider ? new XAuth(auth, options.xProvider) : null;
   const secureCookies = origin?.protocol === 'https:';
   // The browser rejects parent-domain cookies with a __Host- prefix.
-  const sessionCookieName = secureCookies ? '__Host-commission_session' : 'commission_session';
-  const emailCookieName = secureCookies ? '__Host-commission_email' : 'commission_email';
-  const flowCookieName = secureCookies ? '__Host-commission_oauth' : 'commission_oauth';
+  const sessionCookieName = secureCookies ? '__Host-favor_session' : 'favor_session';
+  const emailCookieName = secureCookies ? '__Host-favor_email' : 'favor_email';
+  const flowCookieName = secureCookies ? '__Host-favor_oauth' : 'favor_oauth';
   const sessionCookie = {
     httpOnly: true,
     sameSite: 'strict' as const,
@@ -77,7 +77,7 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     )
       return reply.code(403).send({ message: 'アクセス先のURLを確認してください。' });
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
-      if (request.headers['x-commission-action'] !== '1')
+      if (request.headers['x-favor-action'] !== '1')
         return reply.code(403).send({ message: '操作を確認できませんでした。' });
       const origin = request.headers.origin;
       if (origin) {
@@ -303,9 +303,7 @@ export async function buildApp(service: CommissionService, options: AppOptions =
     async (request) => service.session(auth.registerAccount(request.cookies[sessionCookieName])),
   );
   const linkToken = (request: FastifyRequest): string =>
-    typeof request.headers['x-commission-link'] === 'string'
-      ? request.headers['x-commission-link']
-      : '';
+    typeof request.headers['x-favor-link'] === 'string' ? request.headers['x-favor-link'] : '';
   app.get('/api/links', async (request) => ({ links: links.list(actor(request)) }));
   app.post<{ Body: RequestLinkInput }>(
     '/api/links',

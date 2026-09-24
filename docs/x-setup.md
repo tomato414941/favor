@@ -6,14 +6,14 @@
 2. プロジェクト直下の `.env.local` に設定する。このファイルはGit管理外。
 
    ```dotenv
-   COMMISSION_AUTH_MODE=x
-   COMMISSION_PUBLIC_ORIGIN=http://127.0.0.1:3211
+   FAVOR_AUTH_MODE=x
+   FAVOR_PUBLIC_ORIGIN=http://127.0.0.1:3211
    X_CLIENT_ID=YOUR_OAUTH2_CLIENT_ID
    X_CLIENT_SECRET=YOUR_OAUTH2_CLIENT_SECRET
    ```
 
 3. `npm run dev` で起動する。起動済みなら再起動する。
 
-ポートやドメインを変える場合は、変更後の `COMMISSION_PUBLIC_ORIGIN`（末尾の `/` なし）に `/api/auth/x/callback` を付けたURLをXアプリに登録する。
+ポートやドメインを変える場合は、変更後の `FAVOR_PUBLIC_ORIGIN`（末尾の `/` なし）に `/api/auth/x/callback` を付けたURLをXアプリに登録する。
 
-X認証時のDBは既定で `data/x-sandbox/commission.sqlite`。通常の起動で使う `data/commission.sqlite` とは別になる。保存先は `COMMISSION_DATA_DIR` で指定できる。
+X認証時のDBは既定で `data/x-sandbox/favor.sqlite`。通常の起動で使う `data/favor.sqlite` とは別になる。保存先は `FAVOR_DATA_DIR` で指定できる。

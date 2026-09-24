@@ -3,7 +3,7 @@ export function parsePublicOrigin(value: string): URL {
   try {
     origin = new URL(value);
   } catch {
-    throw new Error('COMMISSION_PUBLIC_ORIGIN must be a valid origin.');
+    throw new Error('FAVOR_PUBLIC_ORIGIN must be a valid origin.');
   }
   if (
     origin.origin !== value ||
@@ -15,7 +15,7 @@ export function parsePublicOrigin(value: string): URL {
     )
   ) {
     throw new Error(
-      'COMMISSION_PUBLIC_ORIGIN must be an HTTPS origin (HTTP is allowed only on loopback).',
+      'FAVOR_PUBLIC_ORIGIN must be an HTTPS origin (HTTP is allowed only on loopback).',
     );
   }
   return origin;

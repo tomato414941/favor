@@ -1,12 +1,12 @@
 /** Isolated browser-test fixture. Never imported by the application entrypoint. */
 import { join } from 'node:path';
 import { buildApp } from '../src/server/app.js';
-import { CommissionService } from '../src/server/service.js';
+import { FavorService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { XProvider, X_SCOPES } from '../src/server/x-auth.js';
 
-const port = Number(process.env.COMMISSION_PORT);
-const directory = process.env.COMMISSION_DATA_DIR;
+const port = Number(process.env.FAVOR_PORT);
+const directory = process.env.FAVOR_DATA_DIR;
 if (!directory || !Number.isInteger(port) || port < 1024 || port > 65535)
   throw new Error('An isolated test directory and port are required.');
 const profiles: Record<string, { id: string; username: string; name: string }> = {
@@ -40,8 +40,8 @@ const provider = new XProvider(
     return Response.json({ errors: [] }, { status: 404 });
   },
 );
-const store = new Store(join(directory, 'commission.sqlite'));
-const app = await buildApp(new CommissionService(store), { xProvider: provider });
+const store = new Store(join(directory, 'favor.sqlite'));
+const app = await buildApp(new FavorService(store), { xProvider: provider });
 let closing = false;
 async function close() {
   if (closing) return;

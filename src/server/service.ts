@@ -77,7 +77,7 @@ export class DomainError extends Error {
 const fail = (code: string, message: string, status = 409): never => {
   throw new DomainError(code, message, status);
 };
-export class CommissionService {
+export class FavorService {
   readonly policy: Policy;
   constructor(
     readonly store: Store,

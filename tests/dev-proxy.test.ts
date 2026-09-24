@@ -8,12 +8,12 @@ import { join } from 'node:path';
 import { createServer, type ProxyOptions } from 'vite';
 import viteConfig from '../vite.config.js';
 import { buildApp } from '../src/server/app.js';
-import { CommissionService } from '../src/server/service.js';
+import { FavorService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { XProvider, X_SCOPES } from '../src/server/x-auth.js';
 
 test('development proxy preserves the browser host, OAuth callback and CSRF origin', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'commission-proxy-test-'));
+  const directory = await mkdtemp(join(tmpdir(), 'favor-proxy-test-'));
   const probe = createProbe();
   probe.listen(0, '127.0.0.1');
   await once(probe, 'listening');
@@ -39,7 +39,7 @@ test('development proxy preserves the browser host, OAuth callback and CSRF orig
       });
     },
   );
-  const app = await buildApp(new CommissionService(store), { xProvider: provider });
+  const app = await buildApp(new FavorService(store), { xProvider: provider });
   let web: Awaited<ReturnType<typeof createServer>> | undefined;
   try {
     const apiOrigin = await app.listen({ port: 0, host: '127.0.0.1' });
@@ -65,7 +65,7 @@ test('development proxy preserves the browser host, OAuth callback and CSRF orig
     assert.deepEqual(await options.json(), { mode: 'x', xLogin: true });
     const headers = {
       'Content-Type': 'application/json',
-      'X-Commission-Action': '1',
+      'X-Favor-Action': '1',
       Origin: origin,
     };
     const response = await fetch(`${origin}/api/auth/x/start`, {
@@ -87,9 +87,7 @@ test('development proxy preserves the browser host, OAuth callback and CSRF orig
     );
     assert.equal(callback.status, 303);
     assert.ok(callback.headers.get('location')!.startsWith(`${origin}/#auth=success`));
-    assert.ok(
-      callback.headers.getSetCookie().some((entry) => entry.startsWith('commission_session=')),
-    );
+    assert.ok(callback.headers.getSetCookie().some((entry) => entry.startsWith('favor_session=')));
     assert.equal(
       (
         await fetch(`${origin}/api/auth/x/start`, {

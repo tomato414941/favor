@@ -20,12 +20,12 @@ export async function api<T>(path: string, { body, key, linkToken }: ApiOptions 
       method: body === undefined ? 'GET' : 'POST',
       credentials: 'same-origin',
       headers: {
-        ...(linkToken ? { 'X-Commission-Link': linkToken } : {}),
+        ...(linkToken ? { 'X-Favor-Link': linkToken } : {}),
         ...(body === undefined
           ? {}
           : {
               'Content-Type': 'application/json',
-              'X-Commission-Action': '1',
+              'X-Favor-Action': '1',
               ...(key ? { 'Idempotency-Key': key } : {}),
             }),
       },

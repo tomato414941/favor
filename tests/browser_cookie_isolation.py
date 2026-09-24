@@ -18,21 +18,21 @@ from playwright.sync_api import sync_playwright
 
 
 def main():
-    origin = 'https://commission.example.test'
+    origin = 'https://favor.example.test'
     other_origin = 'https://other.example.test'
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
         port = probe.getsockname()[1]
     backend = f'http://127.0.0.1:{port}'
-    with tempfile.TemporaryDirectory(prefix='commission-cookie-isolation-') as data:
-        environment = {**os.environ, 'COMMISSION_PUBLIC_ORIGIN': origin, 'COMMISSION_PORT': str(port),
-                       'COMMISSION_DATA_DIR': data, 'COMMISSION_AUTH_MODE': 'email', 'COMMISSION_TRUST_PROXY': 'none'}
+    with tempfile.TemporaryDirectory(prefix='favor-cookie-isolation-') as data:
+        environment = {**os.environ, 'FAVOR_PUBLIC_ORIGIN': origin, 'FAVOR_PORT': str(port),
+                       'FAVOR_DATA_DIR': data, 'FAVOR_AUTH_MODE': 'email', 'FAVOR_TRUST_PROXY': 'none'}
         server = subprocess.Popen([shutil.which('node'), '--import', 'tsx', 'tests/browser_email_server.ts'],
                                   cwd=Path(__file__).resolve().parents[1], env=environment,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         def api(path, body=None, cookie=None):
-            headers = {'Host': urllib.parse.urlparse(origin).netloc, 'Origin': origin, 'X-Commission-Action': '1'}
+            headers = {'Host': urllib.parse.urlparse(origin).netloc, 'Origin': origin, 'X-Favor-Action': '1'}
             if cookie:
                 headers['Cookie'] = cookie
             if body is not None:
@@ -62,7 +62,7 @@ def main():
                 parsed = http.cookies.SimpleCookie()
                 for value in response.headers.get_all('Set-Cookie'):
                     parsed.load(value)
-                cookie_name = '__Host-commission_session'
+                cookie_name = '__Host-favor_session'
                 other_session = parsed[cookie_name].value
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(headless=True)
@@ -100,7 +100,7 @@ def main():
                 def post(path, body):
                     return page.evaluate('''async ({path, body}) => {
                         const response = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json',
-                            'X-Commission-Action':'1', 'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify(body)});
+                            'X-Favor-Action':'1', 'Idempotency-Key':crypto.randomUUID()}, body:JSON.stringify(body)});
                         return {status: response.status, body: await response.json()};
                     }''', {'path': path, 'body': body})
 
@@ -110,7 +110,7 @@ def main():
                 original_cookie = next(cookie for cookie in context.cookies() if cookie['name'] == cookie_name)
                 page.goto(other_origin)
                 page.evaluate('''({name, token}) => {
-                    for (const cookieName of [name, 'commission_session']) {
+                    for (const cookieName of [name, 'favor_session']) {
                         for (const path of ['/', '/api']) {
                             document.cookie = cookieName + '=' + token + '; Domain=example.test; Path=' + path + '; Secure; SameSite=Strict';
                         }

@@ -9,7 +9,7 @@ import type {
 } from '../shared.js';
 import { AuthService, hashToken, isToken, newToken } from './auth.js';
 import { commandFingerprint } from './fingerprint.js';
-import { CommissionService, DomainError } from './service.js';
+import { FavorService, DomainError } from './service.js';
 
 const DAY = 86_400_000;
 const POLICY = { maximumPending: 5, maximumPerDay: 10, maximumReissuesPerHour: 5 };
@@ -43,11 +43,11 @@ export class RequestLinkService {
   private readonly store;
   private readonly clock;
   constructor(
-    private readonly commissions: CommissionService,
+    private readonly favors: FavorService,
     private readonly auth: AuthService,
   ) {
-    this.store = commissions.store;
-    this.clock = commissions.clock;
+    this.store = favors.store;
+    this.clock = favors.clock;
   }
   private row(id: string): LinkRow {
     return (
@@ -90,8 +90,8 @@ export class RequestLinkService {
       .run(id, actor, action, this.clock());
   }
   private view(row: LinkRow, sender: boolean): RequestLinkView {
-    const client = this.commissions.session(row.client_id);
-    const request = row.request_id ? this.commissions.get(row.client_id, row.request_id) : null;
+    const client = this.favors.session(row.client_id);
+    const request = row.request_id ? this.favors.get(row.client_id, row.request_id) : null;
     return {
       id: row.id,
       recipientName: row.recipient_name,
@@ -135,7 +135,7 @@ export class RequestLinkService {
     });
   }
   list(actor: string): RequestLinkView[] {
-    this.commissions.session(actor);
+    this.favors.session(actor);
     this.expire();
     const rows = this.store.db
       .prepare(
@@ -149,9 +149,9 @@ export class RequestLinkService {
     return this.store.transaction(() => this.view(this.accessible(token, account), false));
   }
   create(actor: string, key: string, input: RequestLinkInput): RequestLinkResult {
-    this.commissions.session(actor);
+    this.favors.session(actor);
     this.expire();
-    const policy = this.commissions.policy;
+    const policy = this.favors.policy;
     if (
       !input ||
       typeof input.brief !== 'string' ||
@@ -196,7 +196,7 @@ export class RequestLinkService {
           429,
         );
       }
-      if (this.commissions.mock.failAuthorization)
+      if (this.favors.mock.failAuthorization)
         throw new DomainError('PAYMENT_DECLINED', '支払いを確保できませんでした。', 422);
       const id = randomUUID();
       const token = newToken();
@@ -228,7 +228,7 @@ export class RequestLinkService {
     };
   }
   reissue(actor: string, id: string, key: string): RequestLinkResult {
-    this.commissions.session(actor);
+    this.favors.session(actor);
     this.expire();
     return this.store.transaction(() => {
       this.pending(this.owner(actor, id));
@@ -266,7 +266,7 @@ export class RequestLinkService {
     if (Number(updated.changes) === 1) this.event(row.id, actor, 'release');
   }
   withdraw(actor: string, id: string, key: string): RequestLinkView {
-    this.commissions.session(actor);
+    this.favors.session(actor);
     this.expire();
     this.owner(actor, id);
     this.command(`user:${actor}`, `withdraw:${id}`, key, {}, () => {
@@ -300,7 +300,7 @@ export class RequestLinkService {
       this.command(socialActor(account), `accept:${row.id}`, key, { agreed: true }, () => {
         this.pending(row);
         const actor = this.auth.registerRecipient(account);
-        const request = this.commissions.receiveLink(
+        const request = this.favors.receiveLink(
           actor,
           row.client_id,
           {

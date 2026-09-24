@@ -9,7 +9,7 @@ export function resendDelivery(
   request: typeof fetch = fetch,
 ): EmailDelivery {
   if (!apiKey.trim() || !from.trim() || /[\r\n]/.test(from))
-    throw new Error('RESEND_API_KEY and COMMISSION_EMAIL_FROM are required.');
+    throw new Error('RESEND_API_KEY and FAVOR_EMAIL_FROM are required.');
   return async ({ to, code }) => {
     const response = await request('https://api.resend.com/emails', {
       method: 'POST',

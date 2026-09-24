@@ -12,7 +12,7 @@ from playwright.sync_api import expect, sync_playwright
 
 def main():
     base = sys.argv[1]
-    artifacts = Path(os.environ.get("COMMISSION_SCREENSHOT_DIR") or tempfile.mkdtemp(prefix="commission-x-browser-"))
+    artifacts = Path(os.environ.get("FAVOR_SCREENSHOT_DIR") or tempfile.mkdtemp(prefix="favor-x-browser-"))
     artifacts.mkdir(parents=True, exist_ok=True)
     private_brief = "星の喫茶店を舞台にした、ふたりだけの物語をお願いします。"
     private_tokens = []

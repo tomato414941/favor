@@ -6,7 +6,7 @@ import { EmailAuth } from '../src/server/email-auth.js';
 import { Mailbox } from './mailbox.js';
 import { buildApp } from '../src/server/app.js';
 import { DomainError } from '../src/server/service.js';
-import { CommissionService } from '../src/server/service.js';
+import { FavorService } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { Store } from '../src/server/store.js';
 
@@ -18,7 +18,7 @@ const input = {
 };
 test('メールアドレスを本人だけに表示し、依頼相手と公開作品には公開用の名前を表示する', async () => {
   const store = new Store();
-  const service = new CommissionService(store);
+  const service = new FavorService(store);
   const auth = new AuthService(store, Date.now, { allowEmail: true });
   const mailbox = new Mailbox();
   const links = new RequestLinkService(service, auth);
@@ -186,8 +186,8 @@ test('メールアドレスの形式を確認してから送信する', async ()
 
 test('確認コードを要求したブラウザでのみログインし、メール受信前の操作を拒否する', async () => {
   const s = setupEmail();
-  const app = await buildApp(new CommissionService(s.store), { emailDelivery: s.mailbox.deliver });
-  const headers = { 'x-commission-action': '1' };
+  const app = await buildApp(new FavorService(s.store), { emailDelivery: s.mailbox.deliver });
+  const headers = { 'x-favor-action': '1' };
   try {
     const started = await app.inject({
       method: 'POST',
@@ -196,7 +196,7 @@ test('確認コードを要求したブラウザでのみログインし、メ�
       payload: { email: 'browser@example.test' },
     });
     assert.deepEqual(started.json(), { ok: true });
-    const flowCookie = started.cookies.find((c) => c.name === 'commission_email')!;
+    const flowCookie = started.cookies.find((c) => c.name === 'favor_email')!;
     const cookie = `${flowCookie.name}=${flowCookie.value}`;
     assert.equal(flowCookie.httpOnly, true);
     assert.equal(flowCookie.sameSite, 'Strict');
@@ -214,7 +214,7 @@ test('確認コードを要求したブラウザでのみログインし、メ�
     assert.equal((await verify()).statusCode, 401);
     const verified = await verify(cookie);
     assert.equal(verified.statusCode, 200);
-    const session = verified.cookies.find((c) => c.name === 'commission_session')!;
+    const session = verified.cookies.find((c) => c.name === 'favor_session')!;
     assert.equal(
       (
         await app.inject({
@@ -233,8 +233,8 @@ test('確認コードを要求したブラウザでのみログインし、メ�
 
 test('ログアウトすると進行中のメール確認を終了する', async () => {
   const s = setupEmail();
-  const app = await buildApp(new CommissionService(s.store), { emailDelivery: s.mailbox.deliver });
-  const headers = { 'x-commission-action': '1' };
+  const app = await buildApp(new FavorService(s.store), { emailDelivery: s.mailbox.deliver });
+  const headers = { 'x-favor-action': '1' };
   try {
     const start = await app.inject({
       method: 'POST',

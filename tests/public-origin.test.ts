@@ -1,17 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp } from '../src/server/app.js';
-import { CommissionService } from '../src/server/service.js';
+import { FavorService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { Mailbox } from './mailbox.js';
 
-const publicOrigin = 'https://commission.example';
-const headers = { host: 'commission.example', origin: publicOrigin, 'x-commission-action': '1' };
+const publicOrigin = 'https://favor.example';
+const headers = { host: 'favor.example', origin: publicOrigin, 'x-favor-action': '1' };
 
 test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCookieと送信元の確認を適用する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new CommissionService(store), {
+  const app = await buildApp(new FavorService(store), {
     emailDelivery: mailbox.deliver,
     publicOrigin,
     trustLoopbackProxy: true,
@@ -28,7 +28,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
         payload: credentials,
       });
       assert.equal(started.statusCode, 200);
-      const flow = started.cookies.find((entry) => entry.name === '__Host-commission_email')!;
+      const flow = started.cookies.find((entry) => entry.name === '__Host-favor_email')!;
       assert.equal(flow.httpOnly, true);
       assert.equal(flow.secure, true);
       assert.equal(flow.sameSite, 'Strict');
@@ -42,7 +42,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
     };
     const registered = await loginByEmail();
     assert.equal(registered.statusCode, 200);
-    const session = registered.cookies.find((entry) => entry.name === '__Host-commission_session')!;
+    const session = registered.cookies.find((entry) => entry.name === '__Host-favor_session')!;
     assert.equal(session.secure, true);
     assert.equal(session.httpOnly, true);
     assert.equal(session.sameSite, 'Strict');
@@ -57,9 +57,9 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
     assert.equal(identity.headers['referrer-policy'], 'no-referrer');
 
     for (const changedHeaders of [
-      { ...headers, host: 'elsewhere.example', 'x-forwarded-host': 'commission.example' },
+      { ...headers, host: 'elsewhere.example', 'x-forwarded-host': 'favor.example' },
       { ...headers, origin: 'https://elsewhere.example' },
-      { ...headers, origin: 'http://commission.example' },
+      { ...headers, origin: 'http://favor.example' },
       { ...headers, 'sec-fetch-site': 'cross-site' },
     ]) {
       assert.equal(
@@ -88,7 +88,7 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
     const login = await loginByEmail();
     assert.equal(login.statusCode, 200);
     assert.equal(
-      login.cookies.find((entry) => entry.name === '__Host-commission_session')!.secure,
+      login.cookies.find((entry) => entry.name === '__Host-favor_session')!.secure,
       true,
     );
   } finally {
@@ -100,25 +100,22 @@ test('公開URLで登録・ログイン・ログアウトし、HTTPS専用のCoo
 test('公開URLにHTTPSを要求し、固定アカウントの体験モードをループバックに限定する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const service = new CommissionService(store);
+  const service = new FavorService(store);
   try {
     for (const value of [
       'invalid',
-      'http://commission.example',
+      'http://favor.example',
       `${publicOrigin}/`,
       `${publicOrigin}/path`,
-      'https://user:pass@commission.example',
+      'https://user:pass@favor.example',
     ]) {
       await assert.rejects(
         buildApp(service, { emailDelivery: mailbox.deliver, publicOrigin: value }),
-        /COMMISSION_PUBLIC_ORIGIN/,
+        /FAVOR_PUBLIC_ORIGIN/,
       );
     }
     await assert.rejects(buildApp(service, { demoAuth: true, publicOrigin }), /only on loopback/);
-    await assert.rejects(
-      buildApp(service, { trustLoopbackProxy: true }),
-      /COMMISSION_PUBLIC_ORIGIN/,
-    );
+    await assert.rejects(buildApp(service, { trustLoopbackProxy: true }), /FAVOR_PUBLIC_ORIGIN/);
     const app = await buildApp(service, { demoAuth: true, publicOrigin: 'http://127.0.0.1:3211' });
     try {
       assert.equal(
@@ -136,7 +133,7 @@ test('公開URLにHTTPSを要求し、固定アカウントの体験モードを
 test('同じ端末の認証試行を制限し、信頼するプロキシ経由の別端末には試行を許可する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new CommissionService(store), {
+  const app = await buildApp(new FavorService(store), {
     emailDelivery: mailbox.deliver,
     publicOrigin,
     trustLoopbackProxy: true,

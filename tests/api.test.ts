@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { buildApp } from '../src/server/app.js';
-import { CommissionService } from '../src/server/service.js';
+import { FavorService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 
 test('HTTPでセッションと送信元を確認し、依頼リンクの入力を検証する', async () => {
   const store = new Store();
-  const service = new CommissionService(store);
+  const service = new FavorService(store);
   const app = await buildApp(service, { demoAuth: true });
   try {
     assert.equal((await app.inject('/api/demo/session')).json(), null);
@@ -31,7 +31,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
           method: 'POST',
           url: '/api/demo/session',
           payload,
-          headers: { 'x-commission-action': '1', origin: 'https://attacker.example' },
+          headers: { 'x-favor-action': '1', origin: 'https://attacker.example' },
         })
       ).statusCode,
       403,
@@ -40,7 +40,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
       method: 'POST',
       url: '/api/demo/session',
       payload,
-      headers: { 'x-commission-action': '1' },
+      headers: { 'x-favor-action': '1' },
     });
     assert.equal(login.statusCode, 200);
     assert.match(String(login.headers['set-cookie']), /HttpOnly/);
@@ -50,7 +50,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
       (await app.inject({ url: '/api/demo/session', headers: { cookie } })).json().name,
       '青葉 / aoba',
     );
-    const headers = { cookie, 'x-commission-action': '1', 'idempotency-key': randomUUID() };
+    const headers = { cookie, 'x-favor-action': '1', 'idempotency-key': randomUUID() };
     const body = {
       brief: '星を題材にした物語をお願いします。',
       amount: 12000,
@@ -77,7 +77,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
     assert.equal(responses[0]!.statusCode, 201);
     assert.equal(responses[1]!.json().link.id, responses[0]!.json().link.id);
     const { token, link } = responses[0]!.json();
-    const proof = { 'x-commission-link': token };
+    const proof = { 'x-favor-link': token };
     for (const method of ['GET', 'HEAD'] as const) {
       assert.equal(
         (await app.inject({ method, url: '/api/links/by-token', headers: proof })).statusCode,

@@ -1,26 +1,26 @@
-name: commission-staging
+name: favor-staging
 
 services:
   app:
     build:
       context: ..
       dockerfile: ops/Dockerfile
-    image: commission-staging:${COMMISSION_RELEASE:-latest}
+    image: favor-staging:${FAVOR_RELEASE:-latest}
     init: true
     network_mode: host
     restart: unless-stopped
     environment:
-      COMMISSION_AUTH_MODE: email
-      COMMISSION_MAIL_DELIVERY: resend
+      FAVOR_AUTH_MODE: email
+      FAVOR_MAIL_DELIVERY: resend
       RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY}
-      COMMISSION_EMAIL_FROM: ${COMMISSION_EMAIL_FROM:?Set COMMISSION_EMAIL_FROM}
-      COMMISSION_TEST_MAIL_DOMAIN: ${COMMISSION_TEST_MAIL_DOMAIN:-commission.test}
-      COMMISSION_PUBLIC_ORIGIN: https://${COMMISSION_HOST:?Set COMMISSION_HOST}
-      COMMISSION_TRUST_PROXY: loopback
-      COMMISSION_PORT: ${COMMISSION_PORT:-3212}
-      COMMISSION_DATA_DIR: /var/lib/commission
+      FAVOR_EMAIL_FROM: ${FAVOR_EMAIL_FROM:?Set FAVOR_EMAIL_FROM}
+      FAVOR_TEST_MAIL_DOMAIN: ${FAVOR_TEST_MAIL_DOMAIN:-favor.test}
+      FAVOR_PUBLIC_ORIGIN: https://${FAVOR_HOST:?Set FAVOR_HOST}
+      FAVOR_TRUST_PROXY: loopback
+      FAVOR_PORT: ${FAVOR_PORT:-3212}
+      FAVOR_DATA_DIR: /var/lib/favor
     volumes:
-      - data:/var/lib/commission
+      - data:/var/lib/favor
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
@@ -28,7 +28,7 @@ services:
     security_opt: [no-new-privileges:true]
     mem_limit: 512m
     healthcheck:
-      test: [CMD, node, --input-type=module, -e, "import {get} from 'node:http'; get({hostname: '127.0.0.1', port: process.env.COMMISSION_PORT, path: '/api/health', headers: {host: new URL(process.env.COMMISSION_PUBLIC_ORIGIN).host}}, r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));"]
+      test: [CMD, node, --input-type=module, -e, "import {get} from 'node:http'; get({hostname: '127.0.0.1', port: process.env.FAVOR_PORT, path: '/api/health', headers: {host: new URL(process.env.FAVOR_PUBLIC_ORIGIN).host}}, r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));"]
       interval: 30s
       timeout: 5s
       start_period: 15s
@@ -47,9 +47,9 @@ services:
       app:
         condition: service_healthy
     environment:
-      COMMISSION_HOST: ${COMMISSION_HOST:?Set COMMISSION_HOST}
-      COMMISSION_BIND_ADDRESS: ${COMMISSION_BIND_ADDRESS:?Set COMMISSION_BIND_ADDRESS}
-      COMMISSION_PORT: ${COMMISSION_PORT:-3212}
+      FAVOR_HOST: ${FAVOR_HOST:?Set FAVOR_HOST}
+      FAVOR_BIND_ADDRESS: ${FAVOR_BIND_ADDRESS:?Set FAVOR_BIND_ADDRESS}
+      FAVOR_PORT: ${FAVOR_PORT:-3212}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - certificates:/data

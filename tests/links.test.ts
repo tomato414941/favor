@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
 import { Mailbox } from './mailbox.js';
-import { CommissionService, DomainError } from '../src/server/service.js';
+import { FavorService, DomainError } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { buildApp } from '../src/server/app.js';
 import type { RequestLinkInput } from '../src/shared.js';
@@ -21,11 +21,11 @@ const input: RequestLinkInput = {
 };
 const errorCode = (code: string) => (error: unknown) =>
   error instanceof DomainError && error.code === code;
-function setup(mock: ConstructorParameters<typeof CommissionService>[3] = {}) {
+function setup(mock: ConstructorParameters<typeof FavorService>[3] = {}) {
   let now = 1_800_000_000_000;
   const store = new Store();
   const clock = () => now;
-  const service = new CommissionService(store, clock, {}, mock);
+  const service = new FavorService(store, clock, {}, mock);
   const auth = new AuthService(store, clock, { allowDemo: true, allowEmail: true });
   const links = new RequestLinkService(service, auth);
   auth.demoLogin('client');
@@ -249,8 +249,8 @@ test('宛先未指定の依頼にも作成件数の制限を適用する', () =>
 test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を確認する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new CommissionService(store), { emailDelivery: mailbox.deliver });
-  const headers = { 'x-commission-action': '1' };
+  const app = await buildApp(new FavorService(store), { emailDelivery: mailbox.deliver });
+  const headers = { 'x-favor-action': '1' };
   const register = async (name: string) => {
     const email = `${name}@example.test`;
     const started = await app.inject({
@@ -263,11 +263,11 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/email/verify',
-      headers: { ...headers, cookie: `commission_email=${started.cookies[0]!.value}` },
+      headers: { ...headers, cookie: `favor_email=${started.cookies[0]!.value}` },
       payload: { code: mailbox.code(email) },
     });
     assert.equal(response.statusCode, 200);
-    return `commission_session=${response.cookies.find((cookie) => cookie.name === 'commission_session')!.value}`;
+    return `favor_session=${response.cookies.find((cookie) => cookie.name === 'favor_session')!.value}`;
   };
   try {
     const sender = await register('link_sender');
@@ -279,7 +279,7 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     });
     assert.equal(created.statusCode, 201);
     const { token, link } = created.json();
-    const proof = { 'x-commission-link': token };
+    const proof = { 'x-favor-link': token };
     const read = await app.inject({ url: '/api/links/by-token', headers: proof });
     assert.equal(read.statusCode, 200);
     assert.equal(read.json().brief, input.brief);
@@ -357,7 +357,7 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
 });
 
 test('メール確認したアカウントを再起動後も使い、再ログインとセッション期限を確認する', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'commission-email-auth-'));
+  const directory = mkdtempSync(join(tmpdir(), 'favor-email-auth-'));
   const path = join(directory, 'test.sqlite');
   let now = 1_800_000_000_000;
   let store = new Store(path);

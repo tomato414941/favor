@@ -13,7 +13,7 @@ from playwright.sync_api import expect, sync_playwright
 
 def main():
     base = sys.argv[1]
-    artifacts = Path(os.environ.get('COMMISSION_SCREENSHOT_DIR') or tempfile.mkdtemp(prefix='commission-links-browser-'))
+    artifacts = Path(os.environ.get('FAVOR_SCREENSHOT_DIR') or tempfile.mkdtemp(prefix='favor-links-browser-'))
     artifacts.mkdir(parents=True, exist_ok=True)
     observed = []
     runtime_errors = []
@@ -51,7 +51,7 @@ def main():
             form.get_by_role('button', name='確認コードを送る', exact=True).click()
             expect(form.get_by_label('確認コード', exact=True)).to_be_visible()
             layout(page, 'verification')
-            mail = Path(os.environ['COMMISSION_TEST_MAIL_DIR']) / (hashlib.sha256(email.strip().lower().encode()).hexdigest() + '.json')
+            mail = Path(os.environ['FAVOR_TEST_MAIL_DIR']) / (hashlib.sha256(email.strip().lower().encode()).hexdigest() + '.json')
             form.get_by_label('確認コード', exact=True).fill(json.loads(mail.read_text())['code'])
             form.get_by_role('button', name='ログイン', exact=True).click()
 
@@ -80,7 +80,7 @@ def main():
             layout(page, 'registration')
             register(page, sender_email)
             expect(page.get_by_role('heading', name='依頼リンクを作成')).to_be_visible()
-            cookie_name = '__Host-commission_session' if base.startswith('https://') else 'commission_session'
+            cookie_name = '__Host-favor_session' if base.startswith('https://') else 'favor_session'
             session_cookie = next(cookie for cookie in sender.cookies() if cookie['name'] == cookie_name)
             assert session_cookie['httpOnly'] and session_cookie['sameSite'] == 'Strict'
             assert session_cookie['secure'] == base.startswith('https://')
@@ -223,7 +223,7 @@ def main():
                 else:
                     visiting.keyboard.press('Escape')
                 expect(decline_button).to_be_focused()
-                current_link = visitor.request.get(f'{base}/api/links/by-token', headers={'X-Commission-Link': new_url.split('link#')[1]})
+                current_link = visitor.request.get(f'{base}/api/links/by-token', headers={'X-Favor-Link': new_url.split('link#')[1]})
                 assert current_link.json()['state'] == 'pending'
             decline_button.click()
             layout(visiting, 'decline-confirmation')

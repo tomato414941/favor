@@ -38,7 +38,7 @@ test('メール配信サービスが失敗したときは送信失敗として�
 });
 
 test('開発用の確認メールを本人だけが読めるファイルへ保存する', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'commission-mail-'));
+  const directory = await mkdtemp(join(tmpdir(), 'favor-mail-'));
   try {
     const deliver = fileDelivery(join(directory, 'mail'));
     const message = { to: 'recipient@example.test', code: '01234567' };
@@ -57,16 +57,16 @@ test('予約ドメイン宛の確認コードはローカルの受信箱へ保�
   const local: { to: string; code: string }[] = [];
   const remote: { to: string; code: string }[] = [];
   const deliver = testDomainDelivery(
-    'Commission.test',
+    'Favor.test',
     async (message) => void local.push(message),
     async (message) => void remote.push(message),
   );
-  await deliver({ to: 'sample@commission.test', code: '01234567' });
+  await deliver({ to: 'sample@favor.test', code: '01234567' });
   await deliver({ to: 'person@example.com', code: '12345678' });
-  await deliver({ to: 'person@notcommission.test', code: '23456789' });
-  assert.deepEqual(local, [{ to: 'sample@commission.test', code: '01234567' }]);
+  await deliver({ to: 'person@notfavor.test', code: '23456789' });
+  assert.deepEqual(local, [{ to: 'sample@favor.test', code: '01234567' }]);
   assert.deepEqual(remote, [
     { to: 'person@example.com', code: '12345678' },
-    { to: 'person@notcommission.test', code: '23456789' },
+    { to: 'person@notfavor.test', code: '23456789' },
   ]);
 });
