@@ -22,10 +22,10 @@ function setup(options: ConstructorParameters<typeof RequestService>[3] = {}) {
     { acceptanceMs: 1000, authorizationMs: 1000, deliveryMs: 10000 },
     options,
   );
-  const auth = new AuthService(store, () => now, { allowDemo: true, allowEmail: true });
+  const auth = new AuthService(store, () => now, { allowDemo: true });
   auth.demoLogin('client');
   const recipient = auth.identity(auth.demoLogin('creator')).account;
-  const stranger = auth.registerAccount(auth.demoLogin('other'));
+  const stranger = auth.actor(auth.demoLogin('other'));
   const links = new RequestLinkService(service, auth);
   const input: RequestLinkInput = {
     brief: '海辺の喫茶店を舞台にした短い物語をお願いします。',

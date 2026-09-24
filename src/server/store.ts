@@ -12,18 +12,18 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 4 && (version !== 0 || initialized)) {
+    if (version !== 5 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 4 before starting the application.',
+        'Unsupported database schema. Prepare schema version 5 before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 4) return;
+    if (version === 5) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT
       ) STRICT;
       CREATE TABLE requests (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
@@ -57,22 +57,6 @@ export class Store {
         id INTEGER PRIMARY KEY, request_id TEXT NOT NULL REFERENCES requests(id),
         actor_id TEXT NOT NULL, action TEXT NOT NULL, at INTEGER NOT NULL
       ) STRICT;
-      CREATE TABLE social_accounts (
-        provider TEXT NOT NULL, subject TEXT NOT NULL, handle TEXT NOT NULL, name TEXT NOT NULL,
-        user_id TEXT REFERENCES users(id), PRIMARY KEY (provider, subject), UNIQUE (provider, user_id)
-      ) STRICT;
-      CREATE TABLE sessions (
-        token_hash TEXT PRIMARY KEY, provider TEXT NOT NULL, subject TEXT NOT NULL,
-        expires_at INTEGER NOT NULL,
-        FOREIGN KEY (provider, subject) REFERENCES social_accounts(provider, subject)
-      ) STRICT;
-      CREATE TABLE email_accounts (
-        email TEXT PRIMARY KEY, subject TEXT NOT NULL UNIQUE
-      ) STRICT;
-      CREATE TABLE email_challenges (
-        token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL,
-        expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
-      ) STRICT;
       CREATE TABLE request_links (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
         recipient_provider TEXT NOT NULL, recipient_subject TEXT NOT NULL,
@@ -86,16 +70,6 @@ export class Store {
         token_hash TEXT NOT NULL UNIQUE, cancelled_reason TEXT,
         request_id TEXT REFERENCES requests(id)
       ) STRICT;
-      CREATE TABLE oauth_flows (
-        state_hash TEXT PRIMARY KEY, browser_hash TEXT NOT NULL UNIQUE,
-        verifier TEXT NOT NULL, previous_session_hash TEXT, expires_at INTEGER NOT NULL
-      ) STRICT;
-      CREATE TABLE auth_limits (
-        bucket TEXT PRIMARY KEY, started_at INTEGER NOT NULL, attempts INTEGER NOT NULL
-      ) STRICT;
-      CREATE TABLE registration_consents (
-        user_id TEXT PRIMARY KEY REFERENCES users(id), version TEXT NOT NULL, accepted_at INTEGER NOT NULL
-      ) STRICT;
       CREATE INDEX request_links_client ON request_links(client_id, created_at);
       CREATE TABLE link_commands (
         actor_id TEXT NOT NULL, scope TEXT NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL,
@@ -108,7 +82,7 @@ export class Store {
       CREATE TABLE link_optouts (
         email TEXT PRIMARY KEY, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 4;
+      PRAGMA user_version = 5;
     `),
     );
   }

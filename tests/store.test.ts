@@ -9,7 +9,7 @@ import { RequestLinkService } from '../src/server/request-links.js';
 import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 
-test('再起動後も依頼・ファイル・操作の再試行・ログイン状態を維持する', () => {
+test('再起動後も依頼・ファイル・操作の再試行・利用者を維持する', () => {
   const directory = mkdtempSync(join(tmpdir(), 'favor-store-'));
   const path = join(directory, 'test.sqlite');
   let store = new Store(path);
@@ -42,7 +42,8 @@ test('再起動後も依頼・ファイル・操作の再試行・ログイン�
     store.close();
     store = new Store(path);
     ({ auth, requests, links } = services());
-    assert.equal(auth.actor(session), actor);
+    // Sessions live with the identity provider; a restart keeps the user row.
+    assert.equal(auth.actor(auth.demoLogin('recipient')), actor);
     assert.equal(links.create(sender, createKey, input).link.id, created.link.id);
     assert.equal(
       links.accept(recipient, created.token!, acceptKey, true).requestId,

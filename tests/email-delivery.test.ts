@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileDelivery, resendDelivery, testDomainDelivery } from '../src/server/email-delivery.js';
 import { hashToken } from '../src/server/auth.js';
-import type { EmailMessage } from '../src/server/email-auth.js';
+import type { EmailMessage } from '../src/server/email-delivery.js';
 
 const message = (to: string, code: string): EmailMessage => ({
   to,

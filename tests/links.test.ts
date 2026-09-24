@@ -1,9 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
 import { Mailbox } from './mailbox.js';
@@ -26,7 +23,7 @@ function setup(mock: ConstructorParameters<typeof RequestService>[3] = {}) {
   const store = new Store();
   const clock = () => now;
   const service = new RequestService(store, clock, {}, mock);
-  const auth = new AuthService(store, clock, { allowDemo: true, allowEmail: true });
+  const auth = new AuthService(store, clock, { allowDemo: true });
   const links = new RequestLinkService(service, auth);
   auth.demoLogin('client');
   const recipientSession = auth.demoLogin('recipient');
@@ -55,7 +52,6 @@ test('秘密のリンクから登録前に依頼内容と金額を確認する',
     assert.equal(view.amount, input.amount);
     assert.equal(view.clientName, '青葉 / aoba');
     assert.equal(view.paymentState, 'authorized');
-    assert.equal(s.auth.identity(s.recipientSession).registered, false);
     assert.throws(() => s.links.read(created.link.id), errorCode('LINK_UNAVAILABLE'));
     assert.throws(() => s.links.read('A'.repeat(43)), errorCode('LINK_UNAVAILABLE'));
     assert.equal(s.links.list('demo-client')[0]!.id, created.link.id);
@@ -143,8 +139,7 @@ test('作成の再試行をまとめ、リンクを再発行して古いリン�
     assert.throws(() => s.links.read(created.token!), errorCode('LINK_UNAVAILABLE'));
     assert.equal(s.links.read(updated.token!).id, created.link.id);
     assert.throws(
-      () =>
-        s.links.reissue(s.auth.registerAccount(s.auth.demoLogin('other')), created.link.id, key()),
+      () => s.links.reissue(s.auth.actor(s.auth.demoLogin('other')), created.link.id, key()),
       errorCode('LINK_UNAVAILABLE'),
     );
     for (let i = 0; i < 4; i++) s.links.reissue('demo-client', created.link.id, key());
@@ -179,7 +174,6 @@ test('登録せずに辞退し、取消・期限切れでも支払確保を解�
       errorCode('LINK_UNAVAILABLE'),
     );
     assert.ok(s.links.list('demo-client').every((link) => link.paymentState === 'released'));
-    assert.equal(s.auth.identity(s.auth.demoLogin('recipient')).registered, false);
   } finally {
     s.store.close();
   }
@@ -196,7 +190,6 @@ test('支払確定の失敗時は受諾前に戻し、成功時に一度だけ�
       errorCode('PAYMENT_DECLINED'),
     );
     assert.equal(s.links.read(created.token!).paymentState, 'authorized');
-    assert.equal(s.auth.identity(s.recipientSession).registered, false);
     mock.failCapture = false;
     assert.equal(
       s.links.accept(s.recipient, created.token!, operation, true).paymentState,
@@ -249,22 +242,17 @@ test('宛先未指定の依頼にも作成件数の制限を適用する', () =>
 test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を確認する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new RequestService(store), { emailDelivery: mailbox.deliver });
+  const app = await buildApp(new RequestService(store), {
+    demoAuth: true,
+    emailDelivery: mailbox.deliver,
+  });
   const headers = { 'x-favor-action': '1' };
   const register = async (name: string) => {
-    const email = `${name}@example.test`;
-    const started = await app.inject({
-      method: 'POST',
-      url: '/api/auth/email/start',
-      headers,
-      payload: { email },
-    });
-    assert.equal(started.statusCode, 200);
     const response = await app.inject({
       method: 'POST',
-      url: '/api/auth/email/verify',
-      headers: { ...headers, cookie: `favor_email=${started.cookies[0]!.value}` },
-      payload: { code: mailbox.code(email) },
+      url: '/api/demo/login',
+      headers,
+      payload: { email: `${name}@example.test` },
     });
     assert.equal(response.statusCode, 200);
     return `favor_session=${response.cookies.find((cookie) => cookie.name === 'favor_session')!.value}`;
@@ -353,37 +341,5 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
   } finally {
     await app.close();
     store.close();
-  }
-});
-
-test('メール確認したアカウントを再起動後も使い、再ログインとセッション期限を確認する', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'favor-email-auth-'));
-  const path = join(directory, 'test.sqlite');
-  let now = 1_800_000_000_000;
-  let store = new Store(path);
-  const mailbox = new Mailbox();
-  const clock = () => now;
-  try {
-    let auth = new AuthService(store, clock, { allowEmail: true });
-    const email = ' Aoba+Art@Example.TEST ';
-    const token = await mailbox.login(auth, email);
-    const user = auth.actor(token);
-    assert.equal(auth.identity(token).email, 'aoba+art@example.test');
-    store.close();
-    store = new Store(path);
-    auth = new AuthService(store, clock, { allowEmail: true });
-    assert.equal(auth.actor(token), user);
-    const rotated = await mailbox.login(auth, email, token);
-    assert.equal(auth.actor(rotated), user);
-    assert.throws(() => auth.actor(token), errorCode('UNAUTHORIZED'));
-    auth.logout(rotated);
-    assert.throws(() => auth.actor(rotated), errorCode('UNAUTHORIZED'));
-    const next = await mailbox.login(auth, email);
-    assert.equal(auth.actor(next), user);
-    now += 86_400_000;
-    assert.throws(() => auth.actor(next), errorCode('UNAUTHORIZED'));
-  } finally {
-    store.close();
-    rmSync(directory, { recursive: true });
   }
 });

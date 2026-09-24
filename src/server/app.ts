@@ -5,31 +5,33 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { RequestLinkInput, UploadInput } from '../shared.js';
 import { RequestService, DomainError } from './service.js';
-import { AuthService, isToken, type DemoPersona } from './auth.js';
+import { AuthService } from './auth.js';
 import { RequestLinkService } from './request-links.js';
-import { XAuth, XProvider } from './x-auth.js';
-import { EmailAuth, type EmailDelivery } from './email-auth.js';
+import type { EmailDelivery } from './email-delivery.js';
+import type { IdentityResolver } from './identity.js';
 import { parsePublicOrigin } from './public-origin.js';
-import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyError, FastifyRequest } from 'fastify';
 
 interface AppOptions {
   staticRoot?: string;
   logger?: boolean;
+  /** Local sign-in by address only, without an identity provider. Loopback only. */
   demoAuth?: boolean;
+  /** Identity provider (Clerk) and the key the browser needs to show its sign-in. */
+  identity?: { resolver: IdentityResolver; publishableKey: string };
   emailDelivery?: EmailDelivery;
-  xProvider?: XProvider;
   publicOrigin?: string;
   trustLoopbackProxy?: boolean;
 }
 
 export async function buildApp(service: RequestService, options: AppOptions = {}) {
-  if (options.demoAuth && options.xProvider)
-    throw new Error('Demo and X authentication cannot be enabled together.');
-  const configuredOrigin = options.publicOrigin ?? options.xProvider?.publicOrigin;
-  const origin = configuredOrigin === undefined ? undefined : parsePublicOrigin(configuredOrigin);
+  if (options.demoAuth && options.identity)
+    throw new Error('Demo sign-in and an identity provider cannot be enabled together.');
+  if (!options.demoAuth && !options.identity)
+    throw new Error('Either demo sign-in or an identity provider is required.');
+  const origin =
+    options.publicOrigin === undefined ? undefined : parsePublicOrigin(options.publicOrigin);
   const publicOrigin = origin?.origin;
-  if (options.xProvider && publicOrigin !== options.xProvider.publicOrigin)
-    throw new Error('The application and X callback origins must match.');
   if (options.demoAuth && origin && !['localhost', '127.0.0.1'].includes(origin.hostname))
     throw new Error('Demo authentication is allowed only on loopback.');
   if (options.trustLoopbackProxy && !origin)
@@ -44,16 +46,11 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
   });
   const auth = new AuthService(service.store, service.clock, {
     allowDemo: options.demoAuth === true,
-    allowX: Boolean(options.xProvider),
-    allowEmail: Boolean(options.emailDelivery),
+    ...(options.identity ? { resolver: options.identity.resolver } : {}),
   });
-  const email = options.emailDelivery ? new EmailAuth(auth, options.emailDelivery) : null;
-  const x = options.xProvider ? new XAuth(auth, options.xProvider) : null;
   const secureCookies = origin?.protocol === 'https:';
   // The browser rejects parent-domain cookies with a __Host- prefix.
   const sessionCookieName = secureCookies ? '__Host-favor_session' : 'favor_session';
-  const emailCookieName = secureCookies ? '__Host-favor_email' : 'favor_email';
-  const flowCookieName = secureCookies ? '__Host-favor_oauth' : 'favor_oauth';
   const sessionCookie = {
     httpOnly: true,
     sameSite: 'strict' as const,
@@ -61,18 +58,15 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     maxAge: 86400,
     secure: secureCookies,
   };
-  const flowCookie = {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    path: secureCookies ? '/' : '/api/auth',
-    maxAge: 600,
-    secure: secureCookies,
-  };
   const links = new RequestLinkService(service, auth, options.emailDelivery);
   const pageOrigin = (request: FastifyRequest) => publicOrigin ?? `http://${request.headers.host}`;
-  const optionalIdentity = (request: FastifyRequest) => {
+  const identity = (request: FastifyRequest) =>
+    auth.resolve(request, request.cookies[sessionCookieName]);
+  const actor = async (request: FastifyRequest): Promise<string> =>
+    (await identity(request)).account.subject;
+  const optionalIdentity = async (request: FastifyRequest) => {
     try {
-      return identity(request);
+      return await identity(request);
     } catch (error) {
       if (error instanceof DomainError && error.statusCode === 401) return undefined;
       throw error;
@@ -119,105 +113,15 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
       .code(500)
       .send({ message: '処理を完了できませんでした。時間をおいてお試しください。' });
   });
-  const actor = (request: FastifyRequest): string => auth.actor(request.cookies[sessionCookieName]);
-  const identity = (request: FastifyRequest) => auth.identity(request.cookies[sessionCookieName]);
-  const login = (request: FastifyRequest, reply: FastifyReply, persona: DemoPersona) => {
-    auth.logout(request.cookies[sessionCookieName]);
-    const token = auth.demoLogin(persona);
-    reply.setCookie(sessionCookieName, token, sessionCookie);
-    return token;
-  };
   const key = (request: FastifyRequest): string =>
     typeof request.headers['idempotency-key'] === 'string'
       ? request.headers['idempotency-key']
       : '';
   app.get('/api/health', async () => ({ ok: true, demoAuth: options.demoAuth === true }));
   app.get('/api/auth/options', async () => ({
-    mode: x ? 'x' : options.demoAuth ? 'demo' : email ? 'email' : 'disabled',
-    xLogin: Boolean(x),
-    ...(email ? { emailLogin: true } : {}),
+    mode: options.identity ? 'clerk' : 'demo',
+    ...(options.identity ? { publishableKey: options.identity.publishableKey } : {}),
   }));
-  if (email) {
-    app.post<{ Body: { email: string } }>(
-      '/api/auth/email/start',
-      {
-        schema: {
-          body: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['email'],
-            properties: { email: { type: 'string', minLength: 1, maxLength: 254 } },
-          },
-        },
-      },
-      async (request, reply) => {
-        auth.limit(`email-start:${request.ip}`);
-        const challenge = await email.start(request.body.email, request.cookies[emailCookieName]);
-        reply.setCookie(emailCookieName, challenge, { ...sessionCookie, maxAge: 600 });
-        return { ok: true };
-      },
-    );
-    app.post<{ Body: { code: string } }>(
-      '/api/auth/email/verify',
-      {
-        schema: {
-          body: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['code'],
-            properties: { code: { type: 'string', maxLength: 64 } },
-          },
-        },
-      },
-      async (request, reply) => {
-        auth.limit(`email-verify:${request.ip}`, 30);
-        const token = email.verify(
-          request.cookies[emailCookieName],
-          request.body.code,
-          request.cookies[sessionCookieName],
-        );
-        reply.clearCookie(emailCookieName, sessionCookie);
-        reply.setCookie(sessionCookieName, token, sessionCookie);
-        return auth.identity(token);
-      },
-    );
-  }
-  if (x) {
-    app.post(
-      '/api/auth/x/start',
-      { schema: { body: { type: 'object', additionalProperties: false, maxProperties: 0 } } },
-      async (request, reply) => {
-        const flow = x.start(
-          request.ip,
-          request.cookies[flowCookieName],
-          request.cookies[sessionCookieName],
-        );
-        reply.setCookie(flowCookieName, flow.browser, flowCookie);
-        return { url: flow.url };
-      },
-    );
-    app.get<{ Querystring: Record<string, unknown> }>(
-      '/api/auth/x/callback',
-      { exposeHeadRoute: false },
-      async (request, reply) => {
-        let outcome = 'success';
-        try {
-          const token = await x.finish(request.cookies[flowCookieName], request.query);
-          reply.setCookie(sessionCookieName, token, sessionCookie);
-        } catch (error) {
-          outcome =
-            error instanceof DomainError && error.code === 'OAUTH_CANCELLED'
-              ? 'cancelled'
-              : error instanceof DomainError && error.code === 'OAUTH_EXPIRED'
-                ? 'expired'
-                : 'failed';
-        }
-        if (outcome !== 'expired') reply.clearCookie(flowCookieName, flowCookie);
-        const flow = isToken(request.query.state) ? `&flow=${request.query.state}` : '';
-        return reply.redirect(`${publicOrigin}/#auth=${outcome}${flow}`, 303);
-      },
-    );
-  }
   app.get('/api/request-settings', async () => ({
     terms: {
       recommendedAmount: service.policy.recommendedAmount,
@@ -238,70 +142,46 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     },
   }));
   if (options.demoAuth === true) {
-    app.get('/api/demo/session', async (request) => {
-      try {
-        return service.session(actor(request));
-      } catch (error) {
-        if (error instanceof DomainError && error.statusCode === 401) return null;
-        throw error;
-      }
-    });
-    app.post<{ Body: { role: 'client' | 'creator' } }>(
-      '/api/demo/session',
+    app.post<{ Body: { email: string; name?: string } }>(
+      '/api/demo/login',
       {
         schema: {
           body: {
             type: 'object',
-            required: ['role'],
+            required: ['email'],
             additionalProperties: false,
-            properties: { role: { enum: ['client', 'creator'] } },
+            properties: {
+              email: { type: 'string', minLength: 1, maxLength: 254 },
+              name: { type: 'string', maxLength: 100 },
+            },
           },
         },
       },
       async (request, reply) => {
-        return service.session(auth.actor(login(request, reply, request.body.role)));
+        auth.logout(request.cookies[sessionCookieName]);
+        const token = auth.demoLoginEmail(request.body.email, request.body.name);
+        reply.setCookie(sessionCookieName, token, sessionCookie);
+        return auth.identity(token);
       },
-    );
-    app.post<{ Body: { persona: 'recipient' | 'other' } }>(
-      '/api/demo/identity',
-      {
-        schema: {
-          body: {
-            type: 'object',
-            required: ['persona'],
-            additionalProperties: false,
-            properties: { persona: { enum: ['recipient', 'other'] } },
-          },
-        },
-      },
-      async (request, reply) => auth.identity(login(request, reply, request.body.persona)),
     );
   }
   app.get('/api/auth/identity', async (request) => {
     try {
-      return identity(request);
+      return await identity(request);
     } catch (error) {
       if (error instanceof DomainError && error.statusCode === 401) return null;
       throw error;
     }
   });
+  // The identity provider ends its own session in the browser; this clears the demo cookie.
   app.post('/api/auth/logout', async (request, reply) => {
     auth.logout(request.cookies[sessionCookieName]);
-    email?.cancel(request.cookies[emailCookieName]);
-    x?.cancel(request.cookies[flowCookieName]);
-    reply.clearCookie(emailCookieName, sessionCookie);
     reply.clearCookie(sessionCookieName, sessionCookie);
-    reply.clearCookie(flowCookieName, flowCookie);
     return { ok: true };
   });
-  app.post(
-    '/api/auth/register',
-    { schema: { body: { type: 'object', additionalProperties: false, maxProperties: 0 } } },
-    async (request) => service.session(auth.registerAccount(request.cookies[sessionCookieName])),
-  );
   const linkToken = (request: FastifyRequest): string =>
     typeof request.headers['x-favor-link'] === 'string' ? request.headers['x-favor-link'] : '';
-  app.get('/api/links', async (request) => ({ links: links.list(actor(request)) }));
+  app.get('/api/links', async (request) => ({ links: links.list(await actor(request)) }));
   app.post<{ Body: RequestLinkInput }>(
     '/api/links',
     {
@@ -326,7 +206,7 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
       },
     },
     async (request, reply) => {
-      const user = actor(request);
+      const user = await actor(request);
       const created = links.create(user, key(request), request.body);
       if (created.link.delivery !== 'email') return reply.code(201).send(created);
       if (created.token)
@@ -335,7 +215,7 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     },
   );
   app.post<{ Params: { id: string } }>('/api/links/:id/reissue', async (request) => {
-    const user = actor(request);
+    const user = await actor(request);
     const result = links.reissue(user, request.params.id, key(request));
     if (result.link.delivery !== 'email') return result;
     if (result.token)
@@ -343,14 +223,14 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     return { link: links.get(user, result.link.id) };
   });
   app.post<{ Params: { id: string } }>('/api/links/:id/withdraw', async (request) =>
-    links.withdraw(actor(request), request.params.id, key(request)),
+    links.withdraw(await actor(request), request.params.id, key(request)),
   );
   app.get('/api/links/by-token', async (request) => {
-    const who = optionalIdentity(request);
+    const who = await optionalIdentity(request);
     return links.read(linkToken(request), who?.account, who?.email);
   });
   app.get('/api/links/optout', async (request) => {
-    const who = identity(request);
+    const who = await identity(request);
     if (!who.email) throw new DomainError('EMAIL_REQUIRED', 'メールでログインしてください。', 403);
     return links.optout(who.email);
   });
@@ -367,7 +247,7 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
       },
     },
     async (request) => {
-      const who = identity(request);
+      const who = await identity(request);
       if (!who.email)
         throw new DomainError('EMAIL_REQUIRED', 'メールでログインしてください。', 403);
       return links.setOptout(who.email, request.body.blocked);
@@ -386,7 +266,7 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
       },
     },
     async (request) => {
-      const who = identity(request);
+      const who = await identity(request);
       return links.accept(
         who.account,
         linkToken(request),
@@ -397,13 +277,12 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     },
   );
   app.post('/api/links/by-token/decline', async (request) => {
-    const who = optionalIdentity(request);
+    const who = await optionalIdentity(request);
     return links.decline(linkToken(request), key(request), who?.account, who?.email);
   });
   const expirationTimer = setInterval(() => {
     try {
       links.expire();
-      x?.cleanup();
     } catch {
       app.log.error('Expiration failed');
     }
@@ -412,8 +291,8 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
   app.addHook('onClose', async () => {
     clearInterval(expirationTimer);
   });
-  app.get('/api/session', async (request) => service.session(actor(request)));
-  app.get('/api/requests', async (request) => ({ requests: service.list(actor(request)) }));
+  app.get('/api/session', async (request) => service.session(await actor(request)));
+  app.get('/api/requests', async (request) => ({ requests: service.list(await actor(request)) }));
   app.get('/api/works', async () => ({ works: service.publicWorks() }));
   app.get<{ Params: { id: string } }>('/api/works/:id', async (request) =>
     service.publicWork(request.params.id),
@@ -431,10 +310,10 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     },
   );
   app.get<{ Params: { id: string } }>('/api/requests/:id', async (request) =>
-    service.get(actor(request), request.params.id),
+    service.get(await actor(request), request.params.id),
   );
   app.post<{ Params: { id: string } }>('/api/requests/:id/cancel', async (request) =>
-    service.cancel(actor(request), request.params.id, key(request)),
+    service.cancel(await actor(request), request.params.id, key(request)),
   );
   app.post<{ Params: { id: string }; Body: { files: UploadInput[] } }>(
     '/api/requests/:id/deliver',
@@ -464,12 +343,12 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
       },
     },
     async (request) =>
-      service.deliver(actor(request), request.params.id, key(request), request.body.files),
+      service.deliver(await actor(request), request.params.id, key(request), request.body.files),
   );
   app.get<{ Params: { id: string; fileId: string } }>(
     '/api/requests/:id/files/:fileId',
     async (request, reply) => {
-      const file = service.download(actor(request), request.params.id, request.params.fileId);
+      const file = service.download(await actor(request), request.params.id, request.params.fileId);
       const encodedName = encodeURIComponent(file.name).replace(
         /['()*]/g,
         (s) => `%${s.charCodeAt(0).toString(16)}`,

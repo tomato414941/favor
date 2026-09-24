@@ -10,7 +10,7 @@ import type {
 } from '../shared.js';
 import { AuthService, hashToken, isToken, newToken } from './auth.js';
 import { commandFingerprint } from './fingerprint.js';
-import { isValidEmail, normalizeEmail, type EmailDelivery } from './email-auth.js';
+import { isValidEmail, normalizeEmail, type EmailDelivery } from './email-delivery.js';
 import { RequestService, DomainError } from './service.js';
 
 const DAY = 86_400_000;
@@ -96,7 +96,7 @@ export class RequestLinkService {
         'この依頼は、宛先のメールアドレスでログインすると開けます。',
         401,
       );
-    if (account.provider !== 'email' || normalizeEmail(email ?? '') !== row.recipient_email)
+    if (normalizeEmail(email ?? '') !== row.recipient_email)
       throw new DomainError('LINK_OTHER_RECIPIENT', 'この依頼は別のメールアドレス宛です。', 403);
   }
   private accessible(token: string, account?: SocialAccount, email?: string): LinkRow {

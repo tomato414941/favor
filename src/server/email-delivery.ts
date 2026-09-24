@@ -1,7 +1,22 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { hashToken, newToken } from './auth.js';
-import type { EmailDelivery } from './email-auth.js';
+
+export interface EmailMessage {
+  to: string;
+  subject: string;
+  text: string;
+  code?: string;
+}
+export type EmailDelivery = (message: EmailMessage) => Promise<void>;
+export const normalizeEmail = (email: string) =>
+  typeof email === 'string' ? email.trim().toLowerCase() : '';
+export const isValidEmail = (email: string) =>
+  email.length <= 254 &&
+  email.split('@')[0]!.length <= 64 &&
+  /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
+    email,
+  );
 
 export function resendDelivery(
   apiKey: string,

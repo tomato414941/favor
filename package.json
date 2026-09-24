@@ -14,12 +14,15 @@
     "start": "node --import ./scripts/env.mjs dist/server/server/main.js --demo",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:browser": "npm run build -- --logLevel warn && python3 tests/browser_cookie_isolation.py && node scripts/browser.mjs && node scripts/browser.mjs --x",
+    "test:browser": "npm run build -- --logLevel warn && node scripts/browser.mjs",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
     "format": "prettier --write \"src/**/*.ts\" \"client/**/*.{ts,tsx,css,html}\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"client/**/*.{ts,tsx,css,html}\" \"tests/**/*.ts\""
   },
   "dependencies": {
+    "@clerk/backend": "^3.20.0",
+    "@clerk/clerk-react": "^5.61.3",
+    "@clerk/localizations": "^4.19.0",
     "@fastify/cookie": "11.1.2",
     "@fastify/static": "10.1.3",
     "fastify": "5.12.4",

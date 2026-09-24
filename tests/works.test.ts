@@ -19,7 +19,7 @@ const files = (image: string) => [
 test('公開設定の納品済み依頼を作品として公開し、最新版の画像だけをログインなしで配信する', async () => {
   const store = new Store();
   const service = new RequestService(store);
-  const auth = new AuthService(store, Date.now, { allowDemo: true, allowEmail: true });
+  const auth = new AuthService(store, Date.now, { allowDemo: true });
   auth.demoLogin('client');
   const recipient = auth.identity(auth.demoLogin('creator')).account;
   const mailbox = new Mailbox();

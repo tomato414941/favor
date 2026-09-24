@@ -8,7 +8,7 @@ import type {
 } from '../src/shared';
 import { paymentLabels } from '../src/shared';
 import { api, ApiError } from './api';
-import { EmailLoginForm, XLoginButton } from './Auth';
+import { SignInPanel } from './Auth';
 import { RequestForm, type RequestFormSettings } from './RequestForm';
 import { Arrow, ConfirmAction, Link } from './ui';
 
@@ -280,15 +280,7 @@ export function LinkStatus({ link }: { link: RequestLinkView }) {
   );
 }
 
-export function RequestLinkLanding({
-  token,
-  options,
-  initialError,
-}: {
-  token: string;
-  options: AuthOptions;
-  initialError: string;
-}) {
+export function RequestLinkLanding({ token, options }: { token: string; options: AuthOptions }) {
   const [link, setLink] = useState<RequestLinkView | null>(null);
   const [identity, setIdentity] = useState<IdentitySession | null>(null);
   const [ready, setReady] = useState(false);
@@ -364,11 +356,6 @@ export function RequestLinkLanding({
       </header>
       <main className="shell request-link-landing">
         <div className="request-link-reader">
-          {initialError && (
-            <div className="message error" role="alert">
-              {initialError}
-            </div>
-          )}
           {actions.error && (
             <div className="message error" role="alert">
               {actions.error}{' '}
@@ -396,11 +383,7 @@ export function RequestLinkLanding({
               <p className="account-copy">
                 この依頼はメールで届いたものです。届いたメールアドレスでログインすると開けます。
               </p>
-              {options.emailLogin ? (
-                <EmailLoginForm onChange={load} />
-              ) : (
-                <p>現在、ログインを利用できません。</p>
-              )}
+              <SignInPanel options={options} onChange={load} />
             </section>
           )}
           {link && (
@@ -455,13 +438,7 @@ export function RequestLinkLanding({
                   ) : authenticate ? (
                     <section className="link-registration" aria-label="受け取るアカウント">
                       <h3>受け取るアカウント</h3>
-                      {options.emailLogin ? (
-                        <EmailLoginForm onChange={load} />
-                      ) : options.xLogin ? (
-                        <XLoginButton />
-                      ) : (
-                        <p>現在、登録・ログインを利用できません。</p>
-                      )}
+                      <SignInPanel options={options} onChange={load} />
                     </section>
                   ) : (
                     <button

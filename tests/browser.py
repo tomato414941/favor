@@ -48,11 +48,6 @@ def main():
         def register(page, email):
             form = page.get_by_role('form', name='メールでログイン')
             form.get_by_label('メールアドレス', exact=True).fill(email)
-            form.get_by_role('button', name='確認コードを送る', exact=True).click()
-            expect(form.get_by_label('確認コード', exact=True)).to_be_visible()
-            layout(page, 'verification')
-            mail = Path(os.environ['FAVOR_TEST_MAIL_DIR']) / (hashlib.sha256(email.strip().lower().encode()).hexdigest() + '.json')
-            form.get_by_label('確認コード', exact=True).fill(json.loads(mail.read_text())['code'])
             form.get_by_role('button', name='ログイン', exact=True).click()
 
         def compose(page, brief):

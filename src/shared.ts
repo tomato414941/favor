@@ -56,9 +56,9 @@ export interface IdentitySession {
   email?: string;
 }
 export interface AuthOptions {
-  mode: 'email' | 'demo' | 'x' | 'disabled';
-  xLogin: boolean;
-  emailLogin?: boolean;
+  /** clerk: sign-in through Clerk. demo: local sign-in by address, loopback only. */
+  mode: 'clerk' | 'demo';
+  publishableKey?: string;
 }
 export type RequestLinkState = 'pending' | 'accepted' | 'cancelled';
 export interface RequestLinkView {

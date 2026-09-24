@@ -10,7 +10,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
   const service = new RequestService(store);
   const app = await buildApp(service, { demoAuth: true });
   try {
-    assert.equal((await app.inject('/api/demo/session')).json(), null);
+    assert.equal((await app.inject('/api/auth/identity')).json(), null);
     assert.equal(
       (await app.inject('/api/request-settings')).json().limits.maximumAmount,
       service.policy.maximumAmount,
@@ -20,16 +20,16 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
       (await app.inject({ url: '/api/health', headers: { host: 'attacker.example' } })).statusCode,
       403,
     );
-    const payload = { role: 'client' };
+    const payload = { email: 'aoba@favor.test', name: '青葉 / aoba' };
     assert.equal(
-      (await app.inject({ method: 'POST', url: '/api/demo/session', payload })).statusCode,
+      (await app.inject({ method: 'POST', url: '/api/demo/login', payload })).statusCode,
       403,
     );
     assert.equal(
       (
         await app.inject({
           method: 'POST',
-          url: '/api/demo/session',
+          url: '/api/demo/login',
           payload,
           headers: { 'x-favor-action': '1', origin: 'https://attacker.example' },
         })
@@ -38,7 +38,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
     );
     const login = await app.inject({
       method: 'POST',
-      url: '/api/demo/session',
+      url: '/api/demo/login',
       payload,
       headers: { 'x-favor-action': '1' },
     });
@@ -47,7 +47,7 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
     assert.match(String(login.headers['set-cookie']), /SameSite=Strict/);
     const cookie = String(login.headers['set-cookie']).split(';')[0]!;
     assert.equal(
-      (await app.inject({ url: '/api/demo/session', headers: { cookie } })).json().name,
+      (await app.inject({ url: '/api/session', headers: { cookie } })).json().name,
       '青葉 / aoba',
     );
     const headers = { cookie, 'x-favor-action': '1', 'idempotency-key': randomUUID() };

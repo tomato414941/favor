@@ -1,5 +1,6 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { IdentitySession, SocialAccount } from '../shared.js';
+import type { IdentityRequest, IdentityResolver, ResolvedIdentity } from './identity.js';
 import { DomainError } from './service.js';
 import { Store } from './store.js';
 
@@ -8,221 +9,95 @@ export const newToken = () => randomBytes(32).toString('base64url');
 export const isToken = (token: unknown): token is string =>
   typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token);
 export type DemoPersona = 'client' | 'creator' | 'recipient' | 'other';
-const DEMO_ACCOUNTS: Record<DemoPersona, SocialAccount & { userId: string | null }> = {
-  client: {
-    provider: 'demo',
-    subject: 'social-aoba',
-    handle: 'aoba_demo',
-    name: '青葉 / aoba',
-    userId: 'demo-client',
-  },
-  creator: {
-    provider: 'demo',
-    subject: 'social-nagi',
-    handle: 'nagi_demo',
-    name: '凪 / nagi',
-    userId: 'demo-creator',
-  },
-  recipient: {
-    provider: 'demo',
-    subject: 'social-mio',
-    handle: 'mio_demo',
-    name: '澪 / mio',
-    userId: null,
-  },
-  other: {
-    provider: 'demo',
-    subject: 'social-sora',
-    handle: 'sora_demo',
-    name: '空 / sora',
-    userId: null,
-  },
+const DEMO_ACCOUNTS: Record<DemoPersona, ResolvedIdentity> = {
+  client: { subject: 'demo-client', email: 'aoba@favor.test', name: '青葉 / aoba' },
+  creator: { subject: 'demo-creator', email: 'nagi@favor.test', name: '凪 / nagi' },
+  recipient: { subject: 'demo-recipient', email: 'mio@favor.test', name: '澪 / mio' },
+  other: { subject: 'demo-other', email: 'sora@favor.test', name: '空 / sora' },
 };
-interface AccountRow {
-  provider: string;
-  subject: string;
-  handle: string;
-  name: string;
-  user_id: string | null;
-}
+const unauthorized = () => new DomainError('UNAUTHORIZED', 'ログインしてください。', 401);
 
-/** Authentication boundary. Demo accounts are available only through explicitly enabled demo routes. */
+/**
+ * Turns a verified identity into a Favor user. The identity provider (Clerk in
+ * production) owns credentials and sessions; Favor keeps only the user row.
+ * Demo tokens are held in memory for local use and tests.
+ */
 export class AuthService {
+  private readonly demoSessions = new Map<string, ResolvedIdentity>();
   constructor(
     readonly store: Store,
     readonly clock: () => number = Date.now,
-    readonly options: { allowDemo?: boolean; allowX?: boolean; allowEmail?: boolean } = {},
+    readonly options: { allowDemo?: boolean; resolver?: IdentityResolver } = {},
   ) {}
-
-  limit(bucket: string, maximum = 30) {
-    const now = this.clock();
-    this.store.transaction(() => {
-      this.store.db.prepare('DELETE FROM auth_limits WHERE started_at <= ?').run(now - 600_000);
-      const id = hashToken(bucket);
-      const row = this.store.db
-        .prepare('SELECT attempts FROM auth_limits WHERE bucket = ?')
-        .get(id);
-      if (row && Number(row.attempts) >= maximum)
-        throw new DomainError(
-          'AUTH_RATE_LIMIT',
-          '操作の回数が上限に達しました。時間をおいてお試しください。',
-          429,
-        );
-      this.store.db
-        .prepare(
-          'INSERT INTO auth_limits VALUES (?, ?, 1) ON CONFLICT(bucket) DO UPDATE SET attempts = attempts + 1',
-        )
-        .run(id, now);
-    });
-  }
-
-  /** Called only after the mailbox has been verified by EmailAuth. */
-  emailSession(email: string): string {
-    if (!this.options.allowEmail)
-      throw new DomainError('AUTH_DISABLED', 'メールでのログインは利用できません。', 403);
-    return this.store.transaction(() => {
-      let row = this.store.db
-        .prepare('SELECT subject FROM email_accounts WHERE email = ?')
-        .get(email);
-      if (!row) {
-        const subject = randomUUID();
-        this.store.db.prepare('INSERT INTO email_accounts VALUES (?, ?)').run(email, subject);
-        this.store.db
-          .prepare(
-            "INSERT INTO social_accounts (provider, subject, handle, name) VALUES ('email', ?, ?, ?)",
-          )
-          .run(subject, `user_${subject.replaceAll('-', '')}`, `ユーザー ${subject.slice(0, 8)}`);
-        row = { subject };
-      }
-      const account = this.store.db
-        .prepare("SELECT * FROM social_accounts WHERE provider = 'email' AND subject = ?")
-        .get(row.subject!) as unknown as AccountRow;
-      const token = this.issueSession(account);
-      this.registerAccount(token);
-      return token;
-    });
-  }
 
   private requireDemo() {
     if (this.options.allowDemo !== true)
       throw new DomainError('DEMO_DISABLED', '体験用の認証は利用できません。', 403);
   }
-
+  /** Ensures a user row for an identity and returns the session view of it. */
+  private admit(identity: ResolvedIdentity): IdentitySession {
+    this.store.db
+      .prepare(
+        `INSERT INTO users (id, name, email) VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email`,
+      )
+      .run(identity.subject, identity.name, identity.email);
+    const account: SocialAccount = {
+      provider: this.options.resolver ? 'clerk' : 'demo',
+      subject: identity.subject,
+      handle: identity.email ?? identity.subject,
+      name: identity.name,
+    };
+    return { account, registered: true, ...(identity.email ? { email: identity.email } : {}) };
+  }
   demoLogin(persona: DemoPersona): string {
     this.requireDemo();
-    const account = DEMO_ACCOUNTS[persona];
-    if (!account)
+    const identity = DEMO_ACCOUNTS[persona];
+    if (!identity)
       throw new DomainError('INVALID_ACCOUNT', '体験するアカウントを選んでください。', 400);
-    return this.store.transaction(() => {
-      if (account.userId)
-        this.store.db
-          .prepare('INSERT OR IGNORE INTO users (id, name) VALUES (?, ?)')
-          .run(account.userId, account.name);
-      this.store.db
-        .prepare(
-          `INSERT INTO social_accounts (provider, subject, handle, name, user_id) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(provider, subject) DO UPDATE SET handle = excluded.handle, name = excluded.name`,
-        )
-        .run(account.provider, account.subject, account.handle, account.name, account.userId);
-      return this.issueSession(account);
-    });
+    return this.issue(identity);
   }
-
-  /** The account must come from X's authenticated /2/users/me response. */
-  xLogin(account: SocialAccount, previousSessionHash: string | null): string {
-    if (this.options.allowX !== true || account.provider !== 'x')
-      throw new DomainError('AUTH_DISABLED', 'Xでのログインは利用できません。', 403);
-    return this.store.transaction(() => {
-      this.store.db
-        .prepare(
-          `INSERT INTO social_accounts (provider, subject, handle, name) VALUES ('x', ?, ?, ?)
-        ON CONFLICT(provider, subject) DO UPDATE SET handle = excluded.handle, name = excluded.name`,
-        )
-        .run(account.subject, account.handle, account.name);
-      const row = this.store.db
-        .prepare("SELECT user_id FROM social_accounts WHERE provider = 'x' AND subject = ?")
-        .get(account.subject)!;
-      if (row.user_id)
-        this.store.db
-          .prepare('UPDATE users SET name = ? WHERE id = ?')
-          .run(account.name, row.user_id);
-      if (previousSessionHash)
-        this.store.db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(previousSessionHash);
-      return this.issueSession(account);
-    });
+  /** Signs in as any address without a provider; only for local runs and tests. */
+  demoLoginEmail(input: string, name?: string): string {
+    this.requireDemo();
+    const email = typeof input === 'string' ? input.trim().toLowerCase() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
+      throw new DomainError('INVALID_EMAIL', 'メールアドレスを正しく入力してください。', 400);
+    const subject = `demo_${hashToken(email).slice(0, 16)}`;
+    return this.issue({ subject, email, name: name?.trim() || `ユーザー ${subject.slice(5, 13)}` });
   }
-
-  private issueSession(account: SocialAccount): string {
+  private issue(identity: ResolvedIdentity): string {
     const token = newToken();
-    this.store.db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(this.clock());
-    this.store.db
-      .prepare('INSERT INTO sessions VALUES (?, ?, ?, ?)')
-      .run(hashToken(token), account.provider, account.subject, this.clock() + 86_400_000);
+    this.demoSessions.set(hashToken(token), identity);
+    this.admit(identity);
     return token;
   }
-
-  private account(token: string | undefined): AccountRow & { email: string | null } {
-    if (!isToken(token)) throw new DomainError('UNAUTHORIZED', 'アカウントの確認が必要です。', 401);
-    const row = this.store.db
-      .prepare(
-        `SELECT a.*, c.email AS email FROM sessions s JOIN social_accounts a
-      ON a.provider = s.provider AND a.subject = s.subject
-      LEFT JOIN email_accounts c ON a.provider = 'email' AND c.subject = a.subject
-      WHERE s.token_hash = ? AND s.expires_at > ?`,
-      )
-      .get(hashToken(token), this.clock()) as unknown as
-      (AccountRow & { email: string | null }) | undefined;
-    if (!row) throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
-    if (row.provider === 'demo' && this.options.allowDemo !== true)
-      throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
-    if (row.provider === 'x' && this.options.allowX !== true)
-      throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
-    if (row.provider === 'email' && (this.options.allowEmail !== true || !row.email?.includes('@')))
-      throw new DomainError('UNAUTHORIZED', 'ログインし直してください。', 401);
-    if (!['demo', 'x', 'email'].includes(row.provider))
-      throw new DomainError('UNAUTHORIZED', 'アカウントをもう一度確認してください。', 401);
-    return row;
-  }
-
+  /** Identity for a demo token issued by this process. */
   identity(token: string | undefined): IdentitySession {
-    const { user_id: userId, email, ...account } = this.account(token);
-    return {
-      account,
-      registered: userId !== null,
-      ...(account.provider === 'email' ? { email: email! } : {}),
-    };
+    if (!isToken(token)) throw unauthorized();
+    const identity = this.demoSessions.get(hashToken(token));
+    if (!identity || this.options.allowDemo !== true) throw unauthorized();
+    return this.admit(identity);
   }
   actor(token: string | undefined): string {
-    const account = this.account(token);
-    if (!account.user_id)
-      throw new DomainError('REGISTRATION_REQUIRED', '依頼を受けるには登録が必要です。', 401);
-    return account.user_id;
+    return this.identity(token).account.subject;
   }
   logout(token: string | undefined) {
-    if (isToken(token))
-      this.store.db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
+    if (isToken(token)) this.demoSessions.delete(hashToken(token));
   }
-  /** Called only after link authorization and explicit acceptance, inside the same transaction. */
+  /** Identity for an HTTP request: the provider's session, or a demo token. */
+  async resolve(request: IdentityRequest, demoToken: string | undefined): Promise<IdentitySession> {
+    if (this.options.resolver) {
+      const identity = await this.options.resolver(request);
+      if (identity) return this.admit(identity);
+      throw unauthorized();
+    }
+    return this.identity(demoToken);
+  }
+  /** Recipients are already users; accepting a link only needs their id. */
   registerRecipient(account: SocialAccount): string {
-    return this.register(account);
-  }
-  registerAccount(token: string | undefined): string {
-    return this.store.transaction(() => this.register(this.identity(token).account));
-  }
-  private register(account: SocialAccount): string {
-    const row = this.store.db
-      .prepare('SELECT * FROM social_accounts WHERE provider = ? AND subject = ?')
-      .get(account.provider, account.subject) as unknown as AccountRow | undefined;
-    if (!row) throw new DomainError('UNAUTHORIZED', 'アカウントの確認が必要です。', 401);
-    if (row.user_id) return row.user_id;
-    const id = randomUUID();
-    this.store.db.prepare('INSERT INTO users (id, name) VALUES (?, ?)').run(id, row.name);
-    this.store.db
-      .prepare('UPDATE social_accounts SET user_id = ? WHERE provider = ? AND subject = ?')
-      .run(id, account.provider, account.subject);
-    this.store.db
-      .prepare('INSERT INTO registration_consents VALUES (?, ?, ?)')
-      .run(id, 'account-registration-v1', this.clock());
-    return id;
+    const row = this.store.db.prepare('SELECT id FROM users WHERE id = ?').get(account.subject);
+    if (!row) throw unauthorized();
+    return account.subject;
   }
 }

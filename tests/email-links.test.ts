@@ -24,10 +24,10 @@ async function setup() {
   const store = new Store();
   const mailbox = new Mailbox();
   const service = new RequestService(store);
-  const auth = new AuthService(store, Date.now, { allowEmail: true });
+  const auth = new AuthService(store, Date.now, { allowDemo: true });
   const links = new RequestLinkService(service, auth, mailbox.deliver);
   const sender = auth.identity(await mailbox.login(auth, 'client@example.test'));
-  const senderId = auth.registerAccount(await mailbox.login(auth, 'client@example.test'));
+  const senderId = auth.actor(await mailbox.login(auth, 'client@example.test'));
   const maker = auth.identity(await mailbox.login(auth, 'maker@example.test'));
   const other = auth.identity(await mailbox.login(auth, 'other@example.test'));
   return { store, mailbox, service, auth, links, sender, senderId, maker, other };
@@ -167,25 +167,20 @@ test('HTTPでメール依頼を作成すると本文にリンクが入り、宛�
   const store = new Store();
   const mailbox = new Mailbox();
   const app = await buildApp(new RequestService(store), {
+    demoAuth: true,
     emailDelivery: mailbox.deliver,
-    publicOrigin: 'https://favor.test',
+    publicOrigin: 'http://localhost:3210',
   });
-  const headers = { host: 'favor.test', 'x-favor-action': '1' };
+  const headers = { host: 'localhost:3210', 'x-favor-action': '1' };
   const login = async (email: string) => {
-    const started = await app.inject({
+    const response = await app.inject({
       method: 'POST',
-      url: '/api/auth/email/start',
+      url: '/api/demo/login',
       headers,
       payload: { email },
     });
-    const verified = await app.inject({
-      method: 'POST',
-      url: '/api/auth/email/verify',
-      headers: { ...headers, cookie: `${started.cookies[0]!.name}=${started.cookies[0]!.value}` },
-      payload: { code: mailbox.code(email) },
-    });
-    assert.equal(verified.statusCode, 200);
-    const session = verified.cookies.find((cookie) => cookie.name.endsWith('favor_session'))!;
+    assert.equal(response.statusCode, 200);
+    const session = response.cookies.find((cookie) => cookie.name.endsWith('favor_session'))!;
     return `${session.name}=${session.value}`;
   };
   try {
@@ -201,7 +196,7 @@ test('HTTPでメール依頼を作成すると本文にリンクが入り、宛�
     assert.equal(created.json().link.recipientEmail, 'maker@example.test');
     const mail = mailbox.messages.at(-1)!;
     const token = /link#([A-Za-z0-9_-]{43})/.exec(mail.text)![1]!;
-    const linkHeaders = { host: 'favor.test', 'x-favor-link': token };
+    const linkHeaders = { host: 'localhost:3210', 'x-favor-link': token };
     const anonymous = await app.inject({ url: '/api/links/by-token', headers: linkHeaders });
     assert.equal(anonymous.statusCode, 401);
     assert.equal(anonymous.json().code, 'LINK_LOGIN_REQUIRED');

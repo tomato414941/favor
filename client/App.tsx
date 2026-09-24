@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { ClerkProvider, useAuth } from '@clerk/clerk-react';
+import { jaJP } from '@clerk/localizations';
 import type { AuthOptions, IdentitySession } from '../src/shared';
 import { api } from './api';
-import { AccountEntry, restoreXReturn } from './Auth';
+import { AccountEntry } from './Auth';
 import { Home } from './Home';
 import { WorkPage, WorksList } from './Works';
 import { RequestLinkLanding } from './RequestLinks';
 import { Workspace, type Page } from './Workspace';
 import { Link } from './ui';
 
-const initialLocation = restoreXReturn();
 const location = () => `${window.location.pathname}${window.location.hash}`;
 const afterLoginKey = 'favor.after-login';
 
@@ -46,9 +47,72 @@ function replace(path: string) {
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
+/** Re-reads who is signed in whenever Clerk's own state changes. */
+function ClerkSync({ onChange }: { onChange: () => void }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (isLoaded) onChange();
+  }, [isLoaded, isSignedIn, onChange]);
+  return null;
+}
+
+function Providers({
+  options,
+  children,
+  onChange,
+}: {
+  options: AuthOptions | null;
+  children: ReactNode;
+  onChange: () => void;
+}) {
+  if (options?.mode !== 'clerk' || !options.publishableKey) return <>{children}</>;
+  return (
+    <ClerkProvider publishableKey={options.publishableKey} localization={jaJP}>
+      <ClerkSync onChange={onChange} />
+      {children}
+    </ClerkProvider>
+  );
+}
+
 export function App() {
-  const [current, setCurrent] = useState(initialLocation.location);
   const [options, setOptions] = useState<AuthOptions | null>(null);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const [clerkTick, setClerkTick] = useState(0);
+  const clerkChanged = useCallback(() => setClerkTick((value) => value + 1), []);
+  useEffect(() => {
+    let active = true;
+    api<AuthOptions>('/auth/options').then(
+      (next) => active && setOptions(next),
+      (cause: unknown) =>
+        active && setError(cause instanceof Error ? cause.message : 'ページを開けませんでした。'),
+    );
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+  if (!options)
+    return (
+      <main className="shell">
+        <div className="loading" role="status">
+          {error ? '接続をお確かめください。' : 'ページを開いています…'}
+        </div>
+        {error && (
+          <p className="message error" role="alert">
+            {error} <button onClick={() => setAttempt((value) => value + 1)}>再読み込み</button>
+          </p>
+        )}
+      </main>
+    );
+  return (
+    <Providers options={options} onChange={clerkChanged}>
+      <Pages options={options} clerkTick={clerkTick} />
+    </Providers>
+  );
+}
+
+function Pages({ options, clerkTick }: { options: AuthOptions; clerkTick: number }) {
+  const [current, setCurrent] = useState(location());
   const [identity, setIdentity] = useState<IdentitySession | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
@@ -61,13 +125,9 @@ export function App() {
   useEffect(() => {
     let active = true;
     setReady(false);
-    void Promise.all([
-      api<AuthOptions>('/auth/options'),
-      api<IdentitySession | null>('/auth/identity'),
-    ])
-      .then(([next, account]) => {
+    void api<IdentitySession | null>('/auth/identity')
+      .then((account) => {
         if (!active) return;
-        setOptions(next);
         setIdentity(account);
         setReady(true);
         setError('');
@@ -78,7 +138,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [attempt, route.kind, route.kind === 'link' ? route.token : '']);
+  }, [attempt, clerkTick, route.kind, route.kind === 'link' ? route.token : '']);
   useEffect(() => {
     const change = () => setCurrent(location());
     window.addEventListener('popstate', change);
@@ -88,10 +148,10 @@ export function App() {
       window.removeEventListener('hashchange', change);
     };
   }, []);
-  const signedIn = options?.mode === 'demo' || identity?.registered === true;
+  const signedIn = identity?.registered === true;
   // Own pages need a signed-in person; the login page sends them back afterwards.
   useEffect(() => {
-    if (!ready || !options) return;
+    if (!ready) return;
     if (route.kind === 'me' && !signedIn) {
       try {
         if (!sessionStorage.getItem(afterLoginKey)) sessionStorage.setItem(afterLoginKey, current);
@@ -110,11 +170,13 @@ export function App() {
       }
       replace(next);
     } else if (window.location.pathname === '/me') replace('/me/sent');
-  }, [ready, options, route.kind, signedIn, current]);
+  }, [ready, route.kind, signedIn, current]);
   const logout = useCallback(async () => {
-    await api('/auth/logout', { body: {} });
+    const clerk = (window as unknown as { Clerk?: { signOut(): Promise<void> } }).Clerk;
+    if (options.mode === 'clerk' && clerk) await clerk.signOut();
+    else await api('/auth/logout', { body: {} });
     changed();
-  }, [changed]);
+  }, [changed, options.mode]);
   if (route.kind === 'missing')
     return (
       <main className="shell works-page">
@@ -124,7 +186,7 @@ export function App() {
         </p>
       </main>
     );
-  if (!options || !ready)
+  if (!ready)
     return (
       <main className="shell">
         <div className="loading" role="status">
@@ -143,22 +205,13 @@ export function App() {
   if (route.kind === 'work')
     return <WorkPage key={route.id} id={route.id} identity={shown} onLogout={logout} />;
   if (route.kind === 'link')
-    return (
-      <RequestLinkLanding
-        key={route.token}
-        token={route.token}
-        options={options}
-        initialError={initialLocation.error}
-      />
-    );
+    return <RequestLinkLanding key={route.token} token={route.token} options={options} />;
   if (route.kind === 'login' || !signedIn)
     return (
       <AccountEntry
         key={identity?.account.subject ?? 'login'}
         options={options}
-        identity={identity}
         onChange={changed}
-        initialError={initialLocation.error}
       />
     );
   return (
@@ -166,7 +219,6 @@ export function App() {
       key={String(attempt)}
       page={route.page}
       requestId={route.requestId}
-      options={options}
       identity={identity}
       onSessionChange={changed}
     />

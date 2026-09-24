@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  AuthOptions,
-  IdentitySession,
-  RequestLinkView,
-  RequestView,
-  SessionView,
-} from '../src/shared';
+import type { IdentitySession, RequestLinkView, RequestView, SessionView } from '../src/shared';
 import { api, ApiError } from './api';
 import { RequestLinks, LinkStatus } from './RequestLinks';
 import type { RequestFormSettings } from './RequestForm';
@@ -21,13 +15,11 @@ export type Page = 'new' | 'sent' | 'received' | 'works' | 'request' | 'link';
 export function Workspace({
   page,
   requestId,
-  options,
   identity,
   onSessionChange,
 }: {
   page: Page;
   requestId: string | null;
-  options: AuthOptions;
   identity: IdentitySession | null;
   onSessionChange: () => void;
 }) {
@@ -58,12 +50,7 @@ export function Workspace({
     let active = true;
     const boot = async () => {
       setError('');
-      const [nextSettings, existing] = await Promise.all([
-        api<RequestFormSettings>('/request-settings'),
-        api<SessionView | null>(options.mode === 'demo' ? '/demo/session' : '/session'),
-      ]);
-      if (!existing && options.mode === 'demo')
-        await api('/demo/session', { body: { role: 'client' } });
+      const nextSettings = await api<RequestFormSettings>('/request-settings');
       if (!active) return;
       setSettings(nextSettings);
       await refresh();
@@ -75,7 +62,7 @@ export function Workspace({
       active = false;
       ticket.current++;
     };
-  }, [attempt, options.mode, refresh]);
+  }, [attempt, refresh]);
   useEffect(() => {
     if (!session) return;
     const poll = () => {
