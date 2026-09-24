@@ -7,7 +7,6 @@ import { RequestService, DomainError } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { buildApp } from '../src/server/app.js';
 import { Mailbox } from './mailbox.js';
-
 const key = () => randomUUID();
 const codeIs = (code: string) => (error: unknown) =>
   error instanceof DomainError && error.code === code;
@@ -19,7 +18,6 @@ const input = {
   delivery: 'email' as const,
   recipientEmail: ' Maker@Example.test ',
 };
-
 async function setup() {
   const store = new Store();
   const mailbox = new Mailbox();
@@ -32,11 +30,10 @@ async function setup() {
   const other = auth.identity(await mailbox.login(auth, 'other@example.test'));
   return { store, mailbox, service, auth, links, sender, senderId, maker, other };
 }
-
 test('メールで届ける依頼は宛先へリンクを送り、送り主にはURLを返さず、宛先でログインした人だけが開ける', async () => {
   const s = await setup();
   try {
-    const created = s.links.create(s.senderId, key(), input);
+    const created = await s.links.create(s.senderId, key(), input);
     assert.equal(created.link.delivery, 'email');
     assert.equal(created.link.recipientEmail, 'maker@example.test');
     await s.links.send(s.senderId, created.link.id, created.token!, 'https://favor.test', true);
@@ -45,7 +42,6 @@ test('メールで届ける依頼は宛先へリンクを送り、送り主に�
     assert.match(mail.subject, /依頼が届いています/);
     assert.match(mail.text, /^匿名の依頼者から/);
     assert.ok(mail.text.includes(`https://favor.test/link#${created.token}`));
-
     assert.throws(() => s.links.read(created.token!), codeIs('LINK_LOGIN_REQUIRED'));
     assert.throws(
       () => s.links.read(created.token!, s.other.account, s.other.email),
@@ -54,15 +50,21 @@ test('メールで届ける依頼は宛先へリンクを送り、送り主に�
     const view = s.links.read(created.token!, s.maker.account, s.maker.email);
     assert.equal(view.clientName, '匿名の依頼者');
     assert.equal(view.recipientEmail, null);
-    assert.throws(
-      () => s.links.decline(created.token!, key(), s.other.account, s.other.email),
+    await assert.rejects(
+      async () => await s.links.decline(created.token!, key(), s.other.account, s.other.email),
       codeIs('LINK_OTHER_RECIPIENT'),
     );
-    assert.throws(
-      () => s.links.accept(s.other.account, created.token!, key(), true, s.other.email),
+    await assert.rejects(
+      async () => await s.links.accept(s.other.account, created.token!, key(), true, s.other.email),
       codeIs('LINK_OTHER_RECIPIENT'),
     );
-    const accepted = s.links.accept(s.maker.account, created.token!, key(), true, s.maker.email);
+    const accepted = await s.links.accept(
+      s.maker.account,
+      created.token!,
+      key(),
+      true,
+      s.maker.email,
+    );
     assert.equal(accepted.state, 'accepted');
     assert.equal(
       s.service.get(
@@ -75,22 +77,25 @@ test('メールで届ける依頼は宛先へリンクを送り、送り主に�
     s.store.close();
   }
 });
-
 test('匿名はメールで届ける場合にだけ選べ、宛先の形式と重複を確認する', async () => {
   const s = await setup();
   try {
-    assert.throws(
-      () => s.links.create(s.senderId, key(), { ...input, delivery: 'self' }),
+    await assert.rejects(
+      async () => await s.links.create(s.senderId, key(), { ...input, delivery: 'self' }),
       codeIs('INVALID_INPUT'),
     );
-    assert.throws(
-      () => s.links.create(s.senderId, key(), { ...input, recipientEmail: 'not-an-address' }),
+    await assert.rejects(
+      async () =>
+        await s.links.create(s.senderId, key(), { ...input, recipientEmail: 'not-an-address' }),
       codeIs('INVALID_EMAIL'),
     );
-    const first = s.links.create(s.senderId, key(), { ...input, visibility: 'public' });
+    const first = await s.links.create(s.senderId, key(), { ...input, visibility: 'public' });
     assert.equal(first.link.visibility, 'public');
-    assert.throws(() => s.links.create(s.senderId, key(), input), codeIs('DUPLICATE_LINK'));
-    const handed = s.links.create(s.senderId, key(), {
+    await assert.rejects(
+      async () => await s.links.create(s.senderId, key(), input),
+      codeIs('DUPLICATE_LINK'),
+    );
+    const handed = await s.links.create(s.senderId, key(), {
       ...input,
       visibility: 'hidden',
       delivery: 'self',
@@ -103,7 +108,6 @@ test('匿名はメールで届ける場合にだけ選べ、宛先の形式と�
     s.store.close();
   }
 });
-
 test('送信に失敗した初回の依頼は支払確保を解除し、再送の失敗は依頼を残す', async () => {
   const s = await setup();
   try {
@@ -112,7 +116,7 @@ test('送信に失敗した初回の依頼は支払確保を解除し、再送�
       if (failing) throw new Error('provider down');
       s.mailbox.messages.push(message);
     });
-    const created = links.create(s.senderId, key(), input);
+    const created = await links.create(s.senderId, key(), input);
     await assert.rejects(
       links.send(s.senderId, created.link.id, created.token!, 'https://favor.test', true),
       codeIs('EMAIL_UNAVAILABLE'),
@@ -120,9 +124,8 @@ test('送信に失敗した初回の依頼は支払確保を解除し、再送�
     const cancelled = links.list(s.senderId)[0]!;
     assert.equal(cancelled.state, 'cancelled');
     assert.equal(cancelled.cancelledReason, 'undeliverable');
-
     failing = false;
-    const again = links.create(s.senderId, key(), input);
+    const again = await links.create(s.senderId, key(), input);
     await links.send(s.senderId, again.link.id, again.token!, 'https://favor.test', true);
     failing = true;
     const reissued = links.reissue(s.senderId, again.link.id, key());
@@ -143,26 +146,27 @@ test('送信に失敗した初回の依頼は支払確保を解除し、再送�
     s.store.close();
   }
 });
-
 test('受信拒否は受諾待ちのメール依頼を見送り、その宛先への新しい送信を止める', async () => {
   const s = await setup();
   try {
-    const created = s.links.create(s.senderId, key(), input);
+    const created = await s.links.create(s.senderId, key(), input);
     assert.deepEqual(s.links.optout('maker@example.test'), { blocked: false });
-    assert.deepEqual(s.links.setOptout('Maker@Example.test', true), { blocked: true });
+    assert.deepEqual(await s.links.setOptout('Maker@Example.test', true), { blocked: true });
     assert.equal(s.links.list(s.senderId)[0]!.cancelledReason, 'recipient_blocked');
     assert.throws(
       () => s.links.read(created.token!, s.maker.account, s.maker.email),
       codeIs('LINK_UNAVAILABLE'),
     );
-    assert.throws(() => s.links.create(s.senderId, key(), input), codeIs('RECIPIENT_UNAVAILABLE'));
-    assert.deepEqual(s.links.setOptout('maker@example.test', false), { blocked: false });
-    assert.equal(s.links.create(s.senderId, key(), input).link.state, 'pending');
+    await assert.rejects(
+      async () => await s.links.create(s.senderId, key(), input),
+      codeIs('RECIPIENT_UNAVAILABLE'),
+    );
+    assert.deepEqual(await s.links.setOptout('maker@example.test', false), { blocked: false });
+    assert.equal((await s.links.create(s.senderId, key(), input)).link.state, 'pending');
   } finally {
     s.store.close();
   }
 });
-
 test('HTTPでメール依頼を作成すると本文にリンクが入り、宛先以外には開けず、受信設定を切り替えられる', async () => {
   const store = new Store();
   const mailbox = new Mailbox();

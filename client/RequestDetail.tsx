@@ -92,15 +92,15 @@ export function RequestDetail({
           <h3>キャンセル済み</h3>
           <p>
             {reasons[request.cancelledReason ?? ''] ?? '取引は終了しています。'}
-            {request.paymentState === 'refunded'
-              ? 'カードへの返金処理が完了しました。'
-              : '支払確保を解除しました。'}
+            {request.paymentState === 'released'
+              ? '仮押さえを解除しました。'
+              : '仮押さえの解除を確認しています。'}
           </p>
         </div>
       )}
-      {request.state === 'accepting' && (
+      {request.state === 'delivering' && (
         <div className="payment-pending">
-          支払いの確認を待っています。制作は確認が完了してから始めてください。
+          支払いを確認しています。確認が済むと、ファイルを相手に渡します。
         </div>
       )}
       {request.files.length > 0 && (
@@ -147,7 +147,7 @@ export function RequestDetail({
           <ConfirmAction
             label="中止する"
             question="この依頼を中止しますか？"
-            description="依頼者に返金します。"
+            description="カードの仮押さえを解除します。"
             busy={busy}
             onConfirm={() => act(request, { type: 'cancel' })}
           />

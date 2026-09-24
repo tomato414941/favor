@@ -70,14 +70,18 @@ function LinkFacts({ link }: { link: RequestLinkView }) {
           <dt>作成日時</dt>
           <dd>{date(link.createdAt)}</dd>
         </div>
-        <div>
-          <dt>受諾期限</dt>
-          <dd>{date(link.expiresAt)}</dd>
-        </div>
-        <div>
-          <dt>納品期限</dt>
-          <dd>{date(link.deliverBy)}</dd>
-        </div>
+        {link.state !== 'awaiting_payment' && (
+          <>
+            <div>
+              <dt>受諾期限</dt>
+              <dd>{date(link.expiresAt)}</dd>
+            </div>
+            <div>
+              <dt>納品期限</dt>
+              <dd>{date(link.deliverBy)}</dd>
+            </div>
+          </>
+        )}
         <div>
           <dt>支払い</dt>
           <dd>カード · {paymentLabels[link.paymentState]}</dd>
@@ -110,6 +114,34 @@ export function RequestLinks({
 }) {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const mutate = useMutationKeys();
+  const returned = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      mode !== 'detail' ||
+      !linkId ||
+      returned.current === linkId ||
+      !links.some((link) => link.id === linkId)
+    )
+      return;
+    if (new URLSearchParams(window.location.search).get('payment') !== 'return') return;
+    returned.current = linkId;
+    window.history.replaceState(null, '', window.location.pathname);
+    void complete(linkId);
+  }, [mode, linkId, links]);
+  async function complete(id: string) {
+    await run(async () => {
+      const result = await mutate<RequestLinkResult>(`/links/${id}/complete-payment`);
+      save(result);
+      notify(result.link.delivery === 'email' ? 'メールで送りました。' : 'リンクを作成しました。');
+    });
+  }
+  async function checkout(id: string) {
+    await run(async () => {
+      const result = await mutate<RequestLinkResult>(`/links/${id}/checkout`);
+      if (result.checkoutUrl) window.location.assign(result.checkoutUrl);
+      else throw new Error('支払いを確認してください。');
+    });
+  }
   function save(result: RequestLinkResult) {
     onChange(result.link);
     setUrls((current) => {
@@ -123,6 +155,11 @@ export function RequestLinks({
     await run(async () => {
       const result = await mutate<RequestLinkResult>('/links', input);
       save(result);
+      if (result.checkoutUrl) {
+        onCreated(result.link.id);
+        window.location.assign(result.checkoutUrl);
+        return;
+      }
       notify(
         result.link.delivery === 'email'
           ? `${result.link.recipientEmail ?? '相手'}へ送りました。`
@@ -159,7 +196,7 @@ export function RequestLinks({
         delete next[link.id];
         return next;
       });
-      notify('依頼を取り消し、支払確保を解除しました。');
+      notify('依頼を取り消しました。');
     });
   }
   async function copy(url: string) {
@@ -193,7 +230,40 @@ export function RequestLinks({
             <LinkStatus link={link} />
           </div>
           <LinkFacts link={link} />
-          {link.state === 'pending' ? (
+          {link.state === 'awaiting_payment' ? (
+            <div className="detail-actions">
+              {link.paymentState === 'authorized' ? (
+                <button className="primary" disabled={busy} onClick={() => void complete(link.id)}>
+                  {link.delivery === 'email' ? 'メールで送る' : 'リンクを作成'}
+                  <Arrow />
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => void checkout(link.id)}
+                  >
+                    カード入力へ
+                    <Arrow />
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void complete(link.id)}
+                  >
+                    入力済みの支払いを確認
+                  </button>
+                </>
+              )}
+              <ConfirmAction
+                label="取り消す"
+                question="この依頼を取り消しますか？"
+                busy={busy}
+                onConfirm={() => withdraw(link)}
+              />
+            </div>
+          ) : link.state === 'pending' ? (
             <div className="request-link-share">
               {link.delivery === 'self' && (
                 <>
@@ -261,7 +331,9 @@ export function RequestLinks({
                     : link.cancelledReason === 'recipient_blocked'
                       ? '相手がメールでの依頼を受け取らない設定にしています。'
                       : '依頼を取り消しました。'}
-              支払確保を解除しました。
+              {link.paymentState === 'released'
+                ? '仮押さえを解除しました。'
+                : '仮押さえの解除を確認しています。'}
             </p>
           )}
         </article>
@@ -275,7 +347,15 @@ export function RequestLinks({
 export function LinkStatus({ link }: { link: RequestLinkView }) {
   return (
     <span className={`status status-${link.state}`}>
-      {link.state === 'pending' ? '受諾待ち' : link.state === 'accepted' ? '受諾済み' : '受付終了'}
+      {link.state === 'awaiting_payment'
+        ? link.paymentState === 'authorized'
+          ? '作成待ち'
+          : 'カード入力待ち'
+        : link.state === 'pending'
+          ? '受諾待ち'
+          : link.state === 'accepted'
+            ? '受諾済み'
+            : '受付終了'}
     </span>
   );
 }

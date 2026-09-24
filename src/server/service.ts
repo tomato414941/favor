@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
 import type {
-  PaymentState,
   RequestLinkInput,
   RequestState,
   RequestView,
@@ -12,12 +11,16 @@ import type {
 } from '../shared.js';
 import { commandFingerprint } from './fingerprint.js';
 import { Store } from './store.js';
+import { DomainError } from './errors.js';
+import { Payments, type PaymentRow } from './payments.js';
+import { MockPayments, type PaymentProvider } from './payment-provider.js';
+export { DomainError } from './errors.js';
 
 const DAY = 86_400_000;
 export const DEMO_POLICY = {
   acceptanceMs: 7 * DAY,
   deliveryMs: 30 * DAY,
-  authorizationMs: 7 * DAY,
+  authorizationMs: 30 * DAY,
   recommendedAmount: 12000,
   minimumAmount: 1000,
   maximumAmount: 299999,
@@ -44,12 +47,6 @@ interface RequestRow {
   cancelled_reason: string | null;
   delivery_version: number;
 }
-interface PaymentRow {
-  request_id: string;
-  state: PaymentState;
-  amount: number;
-  hold_until: number;
-}
 interface FileRow {
   id: string;
   request_id: string;
@@ -65,31 +62,24 @@ const IMAGE_TYPES: Record<string, string> = {
 };
 export const imageType = (name: string): string | null =>
   IMAGE_TYPES[name.toLowerCase().split('.').pop() ?? ''] ?? null;
-export class DomainError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public statusCode = 409,
-  ) {
-    super(message);
-  }
-}
 const fail = (code: string, message: string, status = 409): never => {
   throw new DomainError(code, message, status);
 };
 export class RequestService {
   readonly policy: Policy;
+  readonly payments: Payments;
   constructor(
     readonly store: Store,
     readonly clock: () => number = Date.now,
     policy: Partial<Policy> = {},
-    readonly mock: {
-      failAuthorization?: boolean;
-      failCapture?: boolean;
-      deferCardCapture?: boolean;
-    } = {},
+    provider?: PaymentProvider,
   ) {
     this.policy = { ...DEMO_POLICY, ...policy };
+    this.payments = new Payments(
+      store,
+      provider ?? new MockPayments(clock, { holdMs: this.policy.authorizationMs }),
+      clock,
+    );
   }
   private one<T>(sql: string, ...params: SQLInputValue[]): T | undefined {
     return this.store.db.prepare(sql).get(...params) as unknown as T | undefined;
@@ -242,30 +232,29 @@ export class RequestService {
     });
     return this.get(actor, id);
   }
-  /** Claims a verified link and transfers its mock card hold in the caller's transaction. */
+  /** Acceptance keeps the existing card authorization until delivery. */
   receiveLink(
     actor: string,
     clientId: string,
     input: RequestLinkInput,
     dates: { createdAt: number; expiresAt: number; deliverBy: number },
+    linkId: string,
   ): RequestView {
     return this.store.transaction(() => {
       this.user(clientId);
       this.user(actor);
       if (actor === clientId) fail('FORBIDDEN', 'この依頼は受け取れません。', 403);
-      if (this.clock() >= Math.min(dates.expiresAt, dates.deliverBy))
+      const payment = this.payments.row(linkId);
+      if (payment.state !== 'authorized' || payment.amount !== input.amount)
+        fail('INVALID_PAYMENT', '支払いの仮押さえを確認できません。');
+      if (this.clock() >= Math.min(dates.expiresAt, dates.deliverBy, payment.hold_until))
         fail('LINK_EXPIRED', '依頼リンクの有効期限を過ぎました。');
-      if (this.mock.failCapture)
-        fail(
-          'PAYMENT_DECLINED',
-          '支払いを確定できませんでした。制作はまだ始めないでください。',
-          422,
-        );
       const id = randomUUID();
       this.store.db
         .prepare(
-          `INSERT INTO requests (id, client_id, creator_id, brief, amount, visibility, state, created_at, accept_by, deliver_by)
-        VALUES (?, ?, ?, ?, ?, ?, 'accepting', ?, ?, ?)`,
+          `INSERT INTO requests
+        (id, client_id, creator_id, brief, amount, visibility, state, created_at, accept_by, deliver_by)
+        VALUES (?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?)`,
         )
         .run(
           id,
@@ -278,57 +267,16 @@ export class RequestService {
           dates.expiresAt,
           dates.deliverBy,
         );
-      this.store.db
-        .prepare(
-          "INSERT INTO payments (request_id, state, amount, hold_until) VALUES (?, 'authorized', ?, ?)",
-        )
-        .run(id, input.amount, dates.expiresAt);
+      this.store.db.prepare('UPDATE payments SET request_id = ? WHERE link_id = ?').run(id, linkId);
       this.effect(id, 'authorize');
       this.audit(id, actor, 'accept');
-      if (!this.mock.deferCardCapture) this.capture(id);
       return this.view(this.row(id), actor);
-    });
-  }
-  private capture(id: string) {
-    const row = this.row(id);
-    const payment = this.payment(id);
-    if (!this.effect(id, 'capture')) return;
-    this.store.db.prepare("UPDATE payments SET state = 'captured' WHERE request_id = ?").run(id);
-    if (
-      row.state === 'cancelled' ||
-      this.clock() >= Math.min(row.accept_by, row.deliver_by, payment.hold_until)
-    ) {
-      this.cancelInternal(id, 'payment_expired', 'system');
-    } else {
-      this.store.db.prepare("UPDATE requests SET state = 'accepted' WHERE id = ?").run(id);
-    }
-  }
-  /** Trusted mock-provider event entrypoint, deliberately not an HTTP route. */
-  completeMockCapture(id: string, eventId: string): void {
-    this.expire();
-    this.store.transaction(() => {
-      const prior = this.one<{ request_id: string }>(
-        'SELECT request_id FROM payment_events WHERE id = ?',
-        eventId,
-      );
-      if (prior) {
-        if (prior.request_id !== id) fail('EVENT_REUSED', '決済通知の識別子が重複しています。');
-        return;
-      }
-      this.capture(id);
-      this.store.db.prepare('INSERT INTO payment_events VALUES (?, ?)').run(eventId, id);
     });
   }
   private cancelInternal(id: string, reason: string, actor: string) {
     const row = this.row(id);
     const payment = this.payment(id);
-    if (payment.state === 'authorized') {
-      this.effect(id, 'release');
-      this.store.db.prepare("UPDATE payments SET state = 'released' WHERE request_id = ?").run(id);
-    } else if (payment.state === 'captured') {
-      this.effect(id, 'refund');
-      this.store.db.prepare("UPDATE payments SET state = 'refunded' WHERE request_id = ?").run(id);
-    }
+    this.payments.requestRelease(payment.link_id);
     if (row.state !== 'cancelled') {
       this.store.db
         .prepare("UPDATE requests SET state = 'cancelled', cancelled_reason = ? WHERE id = ?")
@@ -336,9 +284,9 @@ export class RequestService {
       this.audit(id, actor, reason);
     }
   }
-  cancel(actor: string, id: string, key: string): RequestView {
+  async cancel(actor: string, id: string, key: string): Promise<RequestView> {
     this.expire();
-    return this.command(actor, `cancel:${id}`, key, {}, () => {
+    this.command(actor, `cancel:${id}`, key, {}, () => {
       const row = this.row(id);
       this.participant(actor, row);
       if (row.state === 'cancelled') return id;
@@ -347,6 +295,8 @@ export class RequestService {
       else fail('INVALID_STATE', 'この依頼は取り消せません。');
       return id;
     });
+    await this.payments.settle(this.payment(id).link_id);
+    return this.get(actor, id);
   }
   expire(): number {
     return this.store.transaction(() => {
@@ -354,20 +304,19 @@ export class RequestService {
       const rows = this.store.db
         .prepare(
           `SELECT r.* FROM requests r JOIN payments p ON r.id = p.request_id
-        WHERE (r.state = 'accepting' AND (r.accept_by <= ? OR p.hold_until <= ? OR r.deliver_by <= ?))
-        OR (r.state = 'accepted' AND r.deliver_by <= ?)`,
+        WHERE r.state = 'accepted' AND (r.deliver_by <= ? OR p.hold_until <= ?)`,
         )
-        .all(now, now, now, now) as unknown as RequestRow[];
-      for (const row of rows)
-        this.cancelInternal(
-          row.id,
-          row.state === 'accepted' ? 'delivery_expired' : 'acceptance_expired',
-          'system',
-        );
+        .all(now, now) as unknown as RequestRow[];
+      for (const row of rows) this.cancelInternal(row.id, 'delivery_expired', 'system');
       return rows.length;
     });
   }
-  deliver(actor: string, id: string, key: string, files: UploadInput[]): RequestView {
+  async deliver(
+    actor: string,
+    id: string,
+    key: string,
+    files: UploadInput[],
+  ): Promise<RequestView> {
     this.expire();
     if (!Array.isArray(files) || files.length < 1 || files.length > this.policy.maximumFiles)
       fail(
@@ -398,34 +347,45 @@ export class RequestService {
         fail('FILE_TOO_LARGE', 'ファイルは合計8 MB以内で選んでください。', 400);
       return buffer;
     });
-    return this.command(actor, `deliver:${id}`, key, files, () => {
+    this.command(actor, `deliver:${id}`, key, files, () => {
       const row = this.row(id);
       this.participant(actor, row);
       if (actor !== row.creator_id)
         fail('FORBIDDEN', '納品できるのは依頼先の作り手だけです。', 403);
       if (!['accepted', 'delivered'].includes(row.state) || this.clock() >= row.deliver_by)
         fail('INVALID_STATE', 'この依頼には納品できません。');
-      if (this.payment(id).state !== 'captured')
-        fail('INVALID_PAYMENT', '支払確認が完了していません。');
+      const payment = this.payment(id);
+      if (!['authorized', 'captured'].includes(payment.state))
+        fail('INVALID_PAYMENT', '支払いの状態を確認できません。');
       const version = row.delivery_version + 1;
       files.forEach((file, index) =>
         this.store.db
           .prepare('INSERT INTO files VALUES (?, ?, ?, ?, ?)')
           .run(randomUUID(), id, version, file.name, buffers[index]!),
       );
-      this.store.db
-        .prepare("UPDATE requests SET state = 'delivered', delivery_version = ? WHERE id = ?")
-        .run(version, id);
-      this.effect(id, 'sale');
-      this.audit(id, actor, version === 1 ? 'deliver' : 'redeliver');
+      if (payment.state === 'captured') {
+        this.store.db
+          .prepare("UPDATE requests SET state = 'delivered', delivery_version = ? WHERE id = ?")
+          .run(version, id);
+        this.audit(id, actor, 'redeliver');
+      } else {
+        this.store.db.prepare("UPDATE requests SET state = 'delivering' WHERE id = ?").run(id);
+        this.store.db
+          .prepare("UPDATE payments SET state = 'capturing', checked_at = 0 WHERE request_id = ?")
+          .run(id);
+      }
       return id;
     });
+    await this.payments.settle(this.payment(id).link_id);
+    return this.get(actor, id);
   }
   download(actor: string, requestId: string, fileId: string): FileRow {
     this.user(actor);
     const file =
       this.one<FileRow>(
-        'SELECT id, request_id, name, data FROM files WHERE id = ? AND request_id = ?',
+        `SELECT f.id, f.request_id, f.name, f.data FROM files f JOIN requests r ON r.id = f.request_id
+         JOIN payments p ON p.request_id = r.id WHERE f.id = ? AND f.request_id = ?
+         AND f.version <= r.delivery_version AND p.state = 'captured'`,
         fileId,
         requestId,
       ) ?? fail('NOT_FOUND', 'ファイルが見つかりません。', 404);

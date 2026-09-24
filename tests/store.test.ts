@@ -8,8 +8,7 @@ import { AuthService } from '../src/server/auth.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { RequestService } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
-
-test('再起動後も依頼・ファイル・操作の再試行・利用者を維持する', () => {
+test('再起動後も依頼・ファイル・操作の再試行・利用者を維持する', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'favor-store-'));
   const path = join(directory, 'test.sqlite');
   let store = new Store(path);
@@ -32,31 +31,34 @@ test('再起動後も依頼・ファイル・操作の再試行・利用者を�
     const createKey = randomUUID();
     const acceptKey = randomUUID();
     const deliverKey = randomUUID();
-    const created = links.create(sender, createKey, input);
-    const accepted = links.accept(recipient, created.token!, acceptKey, true);
+    const created = await links.create(sender, createKey, input);
+    const accepted = await links.accept(recipient, created.token!, acceptKey, true);
     const actor = auth.actor(session);
     const files = [
       { name: '作品.txt', content: Buffer.from('明け方の静けさ。').toString('base64') },
     ];
-    const delivered = requests.deliver(actor, accepted.requestId!, deliverKey, files);
+    const delivered = await requests.deliver(actor, accepted.requestId!, deliverKey, files);
     store.close();
     store = new Store(path);
     ({ auth, requests, links } = services());
     // Sessions live with the identity provider; a restart keeps the user row.
     assert.equal(auth.actor(auth.demoLogin('recipient')), actor);
-    assert.equal(links.create(sender, createKey, input).link.id, created.link.id);
+    assert.equal((await links.create(sender, createKey, input)).link.id, created.link.id);
     assert.equal(
-      links.accept(recipient, created.token!, acceptKey, true).requestId,
+      (await links.accept(recipient, created.token!, acceptKey, true)).requestId,
       accepted.requestId,
     );
-    assert.deepEqual(requests.deliver(actor, accepted.requestId!, deliverKey, files), delivered);
+    assert.deepEqual(
+      await requests.deliver(actor, accepted.requestId!, deliverKey, files),
+      delivered,
+    );
     assert.equal(
       Buffer.from(requests.download(sender, delivered.id, delivered.files[0]!.id).data).toString(),
       '明け方の静けさ。',
     );
     assert.equal(links.read(created.token!, recipient).paymentState, 'captured');
     assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(), []);
-    const next = links.create(sender, randomUUID(), input);
+    const next = await links.create(sender, randomUUID(), input);
     assert.equal(links.read(next.token!).state, 'pending');
   } finally {
     store.close();

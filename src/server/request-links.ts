@@ -30,7 +30,7 @@ interface LinkRow {
   created_at: number;
   expires_at: number;
   deliver_by: number;
-  token_hash: string;
+  token_hash: string | null;
   cancelled_reason: string | null;
   request_id: string | null;
 }
@@ -101,7 +101,7 @@ export class RequestLinkService {
   }
   private accessible(token: string, account?: SocialAccount, email?: string): LinkRow {
     const row = this.byToken(token);
-    if (row.state === 'cancelled') unavailable();
+    if (['awaiting_payment', 'cancelled'].includes(row.state)) unavailable();
     this.addressed(row, account, email);
     if (
       row.state === 'accepted' &&
@@ -123,7 +123,6 @@ export class RequestLinkService {
   }
   private view(row: LinkRow, sender: boolean): RequestLinkView {
     const client = this.requests.session(row.client_id);
-    const request = row.request_id ? this.requests.get(row.client_id, row.request_id) : null;
     return {
       id: row.id,
       delivery: row.delivery,
@@ -134,7 +133,7 @@ export class RequestLinkService {
       amount: row.amount,
       visibility: row.visibility,
       state: row.state,
-      paymentState: request?.paymentState ?? (row.state === 'pending' ? 'authorized' : 'released'),
+      paymentState: this.requests.payments.row(row.id).state,
       createdAt: row.created_at,
       expiresAt: row.expires_at,
       deliverBy: row.deliver_by,
@@ -185,7 +184,12 @@ export class RequestLinkService {
   get(actor: string, id: string): RequestLinkView {
     return this.view(this.owner(actor, id), true);
   }
-  create(actor: string, key: string, input: RequestLinkInput): RequestLinkResult {
+  async create(
+    actor: string,
+    key: string,
+    input: RequestLinkInput,
+    origin = 'http://localhost',
+  ): Promise<RequestLinkResult> {
     this.requests.session(actor);
     this.expire();
     const policy = this.requests.policy;
@@ -226,7 +230,7 @@ export class RequestLinkService {
       const counts = this.store.db
         .prepare(
           `SELECT
-        COUNT(*) FILTER (WHERE state = 'pending') AS pending,
+        COUNT(*) FILTER (WHERE state IN ('awaiting_payment', 'pending')) AS pending,
         COUNT(*) FILTER (WHERE created_at > ?) AS today
         FROM request_links WHERE client_id = ?`,
         )
@@ -246,23 +250,20 @@ export class RequestLinkService {
           throw new DomainError('RECIPIENT_UNAVAILABLE', 'この宛先には送れません。', 409);
         const duplicate = this.store.db
           .prepare(
-            "SELECT 1 FROM request_links WHERE client_id = ? AND recipient_email = ? AND state = 'pending'",
+            "SELECT 1 FROM request_links WHERE client_id = ? AND recipient_email = ? AND state IN ('awaiting_payment', 'pending')",
           )
           .get(actor, recipientEmail);
         if (duplicate)
           throw new DomainError('DUPLICATE_LINK', 'この宛先には受諾待ちの依頼があります。', 409);
       }
-      if (this.requests.mock.failAuthorization)
-        throw new DomainError('PAYMENT_DECLINED', '支払いを確保できませんでした。', 422);
       const id = randomUUID();
-      const token = newToken();
-      const expiresAt =
-        now + Math.min(policy.acceptanceMs, policy.authorizationMs, policy.deliveryMs);
+      const expiresAt = now + 60 * 60 * 1000;
       this.store.db
         .prepare(
-          `INSERT INTO request_links (id, client_id, recipient_provider, recipient_subject, recipient_name,
-        delivery, recipient_email, brief, amount, visibility, state, created_at, expires_at, deliver_by, token_hash)
-        VALUES (?, ?, '', '', '', ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+          `INSERT INTO request_links
+        (id, client_id, recipient_provider, recipient_subject, recipient_name, delivery, recipient_email,
+         brief, amount, visibility, state, created_at, expires_at, deliver_by)
+        VALUES (?, ?, '', '', '', ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?, ?)`,
         )
         .run(
           id,
@@ -275,15 +276,74 @@ export class RequestLinkService {
           now,
           expiresAt,
           now + policy.deliveryMs,
-          hashToken(token),
         );
+      this.store.db
+        .prepare(
+          `INSERT INTO payments
+        (link_id, provider, state, amount, checkout_expires_at, origin)
+        VALUES (?, ?, 'pending', ?, ?, ?)`,
+        )
+        .run(id, this.requests.payments.provider.mode, input.amount, expiresAt, origin);
+      return { id };
+    });
+    const row = this.owner(actor, result.id);
+    if (row.state === 'cancelled')
+      throw new DomainError('LINK_CLOSED', 'この依頼の受付は終了しました。');
+    if (row.state !== 'awaiting_payment') return { link: this.view(row, true) };
+    const payment = await this.requests.payments.start(row.id);
+    if (this.requests.payments.provider.mode === 'mock') return this.complete(actor, row.id, key);
+    return {
+      link: this.get(actor, row.id),
+      ...(payment.checkout_url ? { checkoutUrl: payment.checkout_url } : {}),
+    };
+  }
+  async checkout(actor: string, id: string): Promise<RequestLinkResult> {
+    const row = this.owner(actor, id);
+    this.expire();
+    if (this.row(id).state !== 'awaiting_payment')
+      throw new DomainError('LINK_CLOSED', 'カード入力の受付は終了しました。');
+    const payment = await this.requests.payments.start(row.id);
+    return {
+      link: this.get(actor, id),
+      ...(payment.checkout_url ? { checkoutUrl: payment.checkout_url } : {}),
+    };
+  }
+  async complete(actor: string, id: string, key: string): Promise<RequestLinkResult> {
+    this.owner(actor, id);
+    this.expire();
+    await this.requests.payments.refresh(id);
+    const result = this.command(`user:${actor}`, `complete:${id}`, key, {}, () => {
+      const row = this.owner(actor, id);
+      if (row.state === 'pending' || row.state === 'accepted') return { id };
+      if (row.state !== 'awaiting_payment' || this.clock() >= row.expires_at)
+        throw new DomainError('LINK_CLOSED', 'この依頼の受付は終了しました。');
+      const payment = this.requests.payments.row(id);
+      if (payment.state !== 'authorized')
+        throw new DomainError(
+          'PAYMENT_PENDING',
+          'カードの仮押さえを確認しています。もう一度ご確認ください。',
+        );
+      if (row.recipient_email && this.optout(row.recipient_email).blocked) {
+        throw new DomainError('RECIPIENT_UNAVAILABLE', 'この宛先には送れません。');
+      }
+      const margin = this.requests.payments.provider.mode === 'stripe_test' ? 300000 : 0;
+      const deliverBy = Math.min(
+        row.created_at + this.requests.policy.deliveryMs,
+        payment.hold_until - margin,
+      );
+      const expiresAt = Math.min(row.created_at + this.requests.policy.acceptanceMs, deliverBy);
+      if (this.clock() >= expiresAt)
+        throw new DomainError('LINK_CLOSED', 'この依頼の受付は終了しました。');
+      const token = newToken();
+      this.store.db
+        .prepare(
+          "UPDATE request_links SET state = 'pending', token_hash = ?, expires_at = ?, deliver_by = ? WHERE id = ?",
+        )
+        .run(hashToken(token), expiresAt, deliverBy, id);
       this.event(id, `user:${actor}`, 'authorize');
       return { id, token };
     });
-    return {
-      link: this.view(this.owner(actor, result.id), true),
-      ...('token' in result ? { token: result.token } : {}),
-    };
+    return { link: this.get(actor, id), ...('token' in result ? { token: result.token } : {}) };
   }
   reissue(actor: string, id: string, key: string): RequestLinkResult {
     this.requests.session(actor);
@@ -318,12 +378,15 @@ export class RequestLinkService {
   private cancel(row: LinkRow, reason: string, actor: string) {
     const updated = this.store.db
       .prepare(
-        "UPDATE request_links SET state = 'cancelled', cancelled_reason = ? WHERE id = ? AND state = 'pending'",
+        "UPDATE request_links SET state = 'cancelled', cancelled_reason = ? WHERE id = ? AND state IN ('awaiting_payment', 'pending')",
       )
       .run(reason, row.id);
-    if (Number(updated.changes) === 1) this.event(row.id, actor, 'release');
+    if (Number(updated.changes) === 1) {
+      this.requests.payments.requestRelease(row.id);
+      this.event(row.id, actor, 'release');
+    }
   }
-  withdraw(actor: string, id: string, key: string): RequestLinkView {
+  async withdraw(actor: string, id: string, key: string): Promise<RequestLinkView> {
     this.requests.session(actor);
     this.expire();
     this.owner(actor, id);
@@ -334,11 +397,17 @@ export class RequestLinkService {
       this.cancel(row, 'withdrawn', `user:${actor}`);
       return { id };
     });
+    await this.requests.payments.settle(id);
     return this.view(this.row(id), true);
   }
-  decline(token: string, key: string, account?: SocialAccount, email?: string): { ok: true } {
+  async decline(
+    token: string,
+    key: string,
+    account?: SocialAccount,
+    email?: string,
+  ): Promise<{ ok: true }> {
     this.expire();
-    return this.store.transaction(() => {
+    const id = this.store.transaction(() => {
       const row = this.byToken(token);
       if (row.state !== 'pending' && row.cancelled_reason !== 'declined') unavailable();
       this.addressed(row, account, email);
@@ -347,17 +416,21 @@ export class RequestLinkService {
         this.cancel(row, 'declined', 'link-recipient');
         return { id: row.id };
       });
-      return { ok: true };
+      return row.id;
     });
+    await this.requests.payments.settle(id);
+    return { ok: true };
   }
-  accept(
+  async accept(
     account: SocialAccount,
     token: string,
     key: string,
     agreed: boolean,
     email?: string,
-  ): RequestLinkView {
+  ): Promise<RequestLinkView> {
     this.expire();
+    const current = this.accessible(token, account, email);
+    await this.requests.payments.refresh(current.id);
     return this.store.transaction(() => {
       const row = this.accessible(token, account, email);
       if (agreed !== true)
@@ -375,6 +448,7 @@ export class RequestLinkService {
             agreeToRules: true,
           },
           { createdAt: row.created_at, expiresAt: row.expires_at, deliverBy: row.deliver_by },
+          row.id,
         );
         this.store.db
           .prepare(
@@ -391,17 +465,20 @@ export class RequestLinkService {
   async send(actor: string, id: string, token: string, origin: string, first: boolean) {
     const row = this.owner(actor, id);
     if (row.delivery !== 'email' || !row.recipient_email) return;
-    if (!this.mail) throw mailUnavailable();
     const client = this.requests.session(row.client_id);
     const from = row.visibility === 'anonymous' ? '匿名の依頼者' : client.name;
     try {
+      if (!this.mail) throw mailUnavailable();
       await this.mail({
         to: row.recipient_email,
         subject: 'Favor 制作の依頼が届いています',
         text: `${from}から制作の依頼が届いています。\n\n内容と金額は次のリンクで確認できます。受けるかどうかは自由に選べます。\n${origin}/link#${token}\n\n受諾期限：${formatDate(row.expires_at)}\n\nこのリンクは、宛先のメールアドレスでログインすると開けます。\n心当たりがない場合は、このメールを破棄してください。今後メールで依頼を受け取らない設定は、リンク先で行えます。`,
       });
     } catch {
-      if (first) this.store.transaction(() => this.cancel(this.row(id), 'undeliverable', 'system'));
+      if (first) {
+        this.store.transaction(() => this.cancel(this.row(id), 'undeliverable', 'system'));
+        await this.requests.payments.settle(id);
+      }
       throw mailUnavailable();
     }
     this.event(id, 'system', first ? 'mail' : 'remail');
@@ -412,11 +489,12 @@ export class RequestLinkService {
       .get(normalizeEmail(email));
     return { blocked: Boolean(row) };
   }
-  setOptout(email: string, blocked: boolean): { blocked: boolean } {
+  async setOptout(email: string, blocked: boolean): Promise<{ blocked: boolean }> {
     const normalized = normalizeEmail(email);
     if (!isValidEmail(normalized))
       throw new DomainError('INVALID_EMAIL', 'メールアドレスを確認してください。', 400);
-    return this.store.transaction(() => {
+    const affected: string[] = [];
+    const result = this.store.transaction(() => {
       if (!blocked) {
         this.store.db.prepare('DELETE FROM link_optouts WHERE email = ?').run(normalized);
         return { blocked: false };
@@ -426,17 +504,24 @@ export class RequestLinkService {
         .run(normalized, this.clock());
       const rows = this.store.db
         .prepare(
-          "SELECT * FROM request_links WHERE delivery = 'email' AND recipient_email = ? AND state = 'pending'",
+          "SELECT * FROM request_links WHERE delivery = 'email' AND recipient_email = ? AND state IN ('awaiting_payment', 'pending')",
         )
         .all(normalized) as unknown as LinkRow[];
-      for (const row of rows) this.cancel(row, 'recipient_blocked', 'link-recipient');
+      for (const row of rows) {
+        this.cancel(row, 'recipient_blocked', 'link-recipient');
+        affected.push(row.id);
+      }
       return { blocked: true };
     });
+    for (const id of affected) await this.requests.payments.settle(id);
+    return result;
   }
   expire(): number {
     return this.store.transaction(() => {
       const rows = this.store.db
-        .prepare("SELECT * FROM request_links WHERE state = 'pending' AND expires_at <= ?")
+        .prepare(
+          "SELECT * FROM request_links WHERE state IN ('awaiting_payment', 'pending') AND expires_at <= ?",
+        )
         .all(this.clock()) as unknown as LinkRow[];
       for (const row of rows) this.cancel(row, 'expired', 'system');
       return rows.length;

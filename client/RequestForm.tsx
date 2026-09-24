@@ -5,6 +5,7 @@ import { number, visibilityLabels, yen } from './format';
 import './RequestForm.css';
 
 export interface RequestFormSettings {
+  paymentMode: 'mock' | 'stripe_test';
   terms: {
     recommendedAmount: number;
     minimumAmount: number;
@@ -15,7 +16,7 @@ export interface RequestFormSettings {
 }
 
 export function RequestForm({
-  settings: { terms, limits },
+  settings: { terms, limits, paymentMode },
   busy,
   submit,
 }: {
@@ -108,12 +109,12 @@ export function RequestForm({
                 </p>
               )}
               <p>
-                受諾期限は作成から{terms.acceptanceDays}日、納品期限は作成から{terms.deliveryDays}
-                日です。
+                受諾は作成から{terms.acceptanceDays}日以内、納品は最長{terms.deliveryDays}
+                日以内です。 カードの仮押さえ期限により短くなります。
               </p>
               <p>表現や仕上がりは作り手に任せます。見積もり・打ち合わせ・修正依頼はできません。</p>
               <p>
-                支払いは作成時に仮押さえし、受諾時に確定します。受諾前の取消・辞退・期限切れでは仮押さえを解除し、受諾後の中止・納品期限切れでは返金します。
+                作成時にカードの利用枠を仮押さえし、納品時に支払います。取消・辞退・中止・期限切れの場合は解除します。
               </p>
               <p className="hint">試用版のため、実際の支払いは発生しません。</p>
             </div>
@@ -140,7 +141,13 @@ export function RequestForm({
                 編集に戻る
               </button>
               <button className="primary" type="submit" disabled={busy || !agreed}>
-                {busy ? '処理しています…' : byMail ? 'メールで送る' : 'リンクを作成'}
+                {busy
+                  ? '処理しています…'
+                  : paymentMode === 'stripe_test'
+                    ? 'カード入力へ'
+                    : byMail
+                      ? 'メールで送る'
+                      : 'リンクを作成'}
                 <Arrow />
               </button>
             </div>

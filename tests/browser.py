@@ -260,7 +260,7 @@ def main():
             expect(visiting.get_by_role('status')).to_contain_text('依頼を見送りました')
             assert visitor.request.get(f'{base}/api/auth/identity').json() is None
             layout(visiting, 'declined')
-            expect(card2).to_contain_text('支払確保を解除しました', timeout=15000)
+            expect(card2).to_contain_text('仮押さえを解除しました', timeout=15000)
 
             brief4 = 'メールで届ける匿名の依頼です。'
             compose(page, brief4)
@@ -295,7 +295,7 @@ def main():
             expect(receiving.get_by_role('button', name='今後、メールでの依頼を受け取らない')).to_be_visible()
             layout(receiving, 'mailed-link')
             confirm_action(card4, '取り消す', 'この依頼を取り消しますか？')
-            expect(card4).to_contain_text('支払確保を解除しました')
+            expect(card4).to_contain_text('仮押さえを解除しました')
 
             brief3 = '取り消す依頼です。'
             compose(page, brief3)
@@ -308,7 +308,7 @@ def main():
             active_link = sender.request.get(f'{base}/api/links').json()['links']
             assert next(link for link in active_link if link['brief'] == brief3)['state'] == 'pending'
             confirm_action(card3, '取り消す', 'この依頼を取り消しますか？')
-            expect(card3).to_contain_text('支払確保を解除しました')
+            expect(card3).to_contain_text('仮押さえを解除しました')
             visiting.goto(url3)
             expect(visiting.get_by_role('alert')).to_contain_text('この依頼リンクは利用できません')
             brief5 = '受けたあとで中止する依頼です。'
@@ -327,7 +327,7 @@ def main():
             expect(stopped.get_by_role('button', name='中止する', exact=True)).to_be_focused()
             expect(stopped).to_contain_text('制作中')
             confirm_action(stopped, '中止する', 'この依頼を中止しますか？')
-            expect(stopped).to_contain_text('カードへの返金処理が完了しました')
+            expect(stopped).to_contain_text('仮押さえを解除しました')
             layout(receiving, 'cancelled')
             page.get_by_role('navigation').get_by_role('link', name=re.compile('^送った依頼')).click()
             layout(page, 'sent-list-many')

@@ -1,3 +1,4 @@
+import { MockPayments } from '../src/server/payment-provider.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +9,6 @@ import { RequestService, DomainError } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { buildApp } from '../src/server/app.js';
 import type { RequestLinkInput } from '../src/shared.js';
-
 const key = () => randomUUID();
 const input: RequestLinkInput = {
   brief: '非公開の夜空の物語をお願いします。',
@@ -18,11 +18,11 @@ const input: RequestLinkInput = {
 };
 const errorCode = (code: string) => (error: unknown) =>
   error instanceof DomainError && error.code === code;
-function setup(mock: ConstructorParameters<typeof RequestService>[3] = {}) {
-  let now = 1_800_000_000_000;
+function setup(mock: ConstructorParameters<typeof MockPayments>[1] = {}) {
+  let now = 1800000000000;
   const store = new Store();
   const clock = () => now;
-  const service = new RequestService(store, clock, {}, mock);
+  const service = new RequestService(store, clock, {}, new MockPayments(clock, mock));
   const auth = new AuthService(store, clock, { allowDemo: true });
   const links = new RequestLinkService(service, auth);
   auth.demoLogin('client');
@@ -42,11 +42,10 @@ function setup(mock: ConstructorParameters<typeof RequestService>[3] = {}) {
     },
   };
 }
-
-test('秘密のリンクから登録前に依頼内容と金額を確認する', () => {
+test('秘密のリンクから登録前に依頼内容と金額を確認する', async () => {
   const s = setup();
   try {
-    const created = s.links.create('demo-client', key(), input);
+    const created = await s.links.create('demo-client', key(), input);
     const view = s.links.read(created.token!);
     assert.equal(view.brief, input.brief);
     assert.equal(view.amount, input.amount);
@@ -59,25 +58,24 @@ test('秘密のリンクから登録前に依頼内容と金額を確認する',
     s.store.close();
   }
 });
-
-test('最初の受諾者に依頼をひも付けて再試行と納品を許可する', () => {
+test('最初の受諾者に依頼をひも付けて再試行と納品を許可する', async () => {
   const s = setup();
   try {
-    const created = s.links.create('demo-client', key(), input);
+    const created = await s.links.create('demo-client', key(), input);
     const operation = key();
-    s.advance(3_600_000);
-    const accepted = s.links.accept(s.recipient, created.token!, operation, true);
+    s.advance(3600000);
+    const accepted = await s.links.accept(s.recipient, created.token!, operation, true);
     const actor = s.auth.actor(s.recipientSession);
     assert.equal(accepted.state, 'accepted');
-    assert.equal(accepted.paymentState, 'captured');
+    assert.equal(accepted.paymentState, 'authorized');
     assert.equal(accepted.recipientName, s.recipient.name);
     assert.equal(
-      s.links.accept(s.recipient, created.token!, operation, true).requestId,
+      (await s.links.accept(s.recipient, created.token!, operation, true)).requestId,
       accepted.requestId,
     );
     assert.equal(s.links.read(created.token!, s.recipient).requestId, accepted.requestId);
-    assert.throws(
-      () => s.links.accept(s.other, created.token!, key(), true),
+    await assert.rejects(
+      async () => await s.links.accept(s.other, created.token!, key(), true),
       errorCode('LINK_UNAVAILABLE'),
     );
     assert.throws(() => s.links.read(created.token!), errorCode('LINK_UNAVAILABLE'));
@@ -85,7 +83,7 @@ test('最初の受諾者に依頼をひも付けて再試行と納品を許可�
     const request = s.service.get(actor, accepted.requestId!);
     assert.equal(request.createdAt, created.link.createdAt);
     assert.equal(request.deliverBy, created.link.deliverBy);
-    const delivered = s.service.deliver(actor, request.id, key(), [
+    const delivered = await s.service.deliver(actor, request.id, key(), [
       { name: '物語.txt', content: Buffer.from('星の物語').toString('base64') },
     ]);
     assert.equal(
@@ -101,35 +99,36 @@ test('最初の受諾者に依頼をひも付けて再試行と納品を許可�
     s.store.close();
   }
 });
-
-test('同意と依頼者以外のアカウントを確認して受諾する', () => {
+test('同意と依頼者以外のアカウントを確認して受諾する', async () => {
   const s = setup();
   try {
-    const created = s.links.create('demo-client', key(), input);
-    assert.throws(
-      () => s.links.accept(s.recipient, created.token!, key(), false),
+    const created = await s.links.create('demo-client', key(), input);
+    await assert.rejects(
+      async () => await s.links.accept(s.recipient, created.token!, key(), false),
       errorCode('RULES_REQUIRED'),
     );
     const sender = s.auth.identity(s.auth.demoLogin('client')).account;
-    assert.throws(
-      () => s.links.accept(sender, created.token!, key(), true),
+    await assert.rejects(
+      async () => await s.links.accept(sender, created.token!, key(), true),
       errorCode('FORBIDDEN'),
     );
     assert.equal(s.links.read(created.token!).state, 'pending');
-    assert.equal(s.links.accept(s.recipient, created.token!, key(), true).state, 'accepted');
+    assert.equal(
+      (await s.links.accept(s.recipient, created.token!, key(), true)).state,
+      'accepted',
+    );
   } finally {
     s.store.close();
   }
 });
-
-test('作成の再試行をまとめ、リンクを再発行して古いリンクを失効する', () => {
+test('作成の再試行をまとめ、リンクを再発行して古いリンクを失効する', async () => {
   const s = setup();
   try {
     const operation = key();
-    const created = s.links.create('demo-client', operation, input);
-    assert.equal(s.links.create('demo-client', operation, input).link.id, created.link.id);
-    assert.throws(
-      () => s.links.create('demo-client', operation, { ...input, amount: 13000 }),
+    const created = await s.links.create('demo-client', operation, input);
+    assert.equal((await s.links.create('demo-client', operation, input)).link.id, created.link.id);
+    await assert.rejects(
+      async () => await s.links.create('demo-client', operation, { ...input, amount: 13000 }),
       errorCode('KEY_REUSED'),
     );
     s.advance(1000);
@@ -152,93 +151,55 @@ test('作成の再試行をまとめ、リンクを再発行して古いリン�
     s.store.close();
   }
 });
-
-test('登録せずに辞退し、取消・期限切れでも支払確保を解除する', () => {
+test('登録せずに辞退し、取消・期限切れでも支払確保を解除する', async () => {
   const s = setup();
   try {
-    const declined = s.links.create('demo-client', key(), input);
+    const declined = await s.links.create('demo-client', key(), input);
     const operation = key();
-    assert.deepEqual(s.links.decline(declined.token!, operation), { ok: true });
-    assert.deepEqual(s.links.decline(declined.token!, operation), { ok: true });
+    assert.deepEqual(await s.links.decline(declined.token!, operation), { ok: true });
+    assert.deepEqual(await s.links.decline(declined.token!, operation), { ok: true });
     assert.throws(() => s.links.read(declined.token!), errorCode('LINK_UNAVAILABLE'));
-    const withdrawn = s.links.create('demo-client', key(), input);
+    const withdrawn = await s.links.create('demo-client', key(), input);
     assert.equal(
-      s.links.withdraw('demo-client', withdrawn.link.id, key()).paymentState,
+      (await s.links.withdraw('demo-client', withdrawn.link.id, key())).paymentState,
       'released',
     );
     assert.throws(() => s.links.read(withdrawn.token!), errorCode('LINK_UNAVAILABLE'));
-    const expired = s.links.create('demo-client', key(), input);
-    s.advance(7 * 86_400_000);
-    assert.throws(
-      () => s.links.accept(s.recipient, expired.token!, key(), true),
+    const expired = await s.links.create('demo-client', key(), input);
+    s.advance(7 * 86400000);
+    await assert.rejects(
+      async () => await s.links.accept(s.recipient, expired.token!, key(), true),
       errorCode('LINK_UNAVAILABLE'),
     );
+    await s.service.payments.reconcile();
     assert.ok(s.links.list('demo-client').every((link) => link.paymentState === 'released'));
   } finally {
     s.store.close();
   }
 });
 
-test('支払確定の失敗時は受諾前に戻し、成功時に一度だけ移行する', () => {
-  const mock = { failCapture: true };
-  const s = setup(mock);
-  try {
-    const created = s.links.create('demo-client', key(), input);
-    const operation = key();
-    assert.throws(
-      () => s.links.accept(s.recipient, created.token!, operation, true),
-      errorCode('PAYMENT_DECLINED'),
-    );
-    assert.equal(s.links.read(created.token!).paymentState, 'authorized');
-    mock.failCapture = false;
-    assert.equal(
-      s.links.accept(s.recipient, created.token!, operation, true).paymentState,
-      'captured',
-    );
-  } finally {
-    s.store.close();
-  }
-});
-
-test('支払確認中の依頼を期限切れにし、遅い決済通知を返金する', () => {
-  const s = setup({ deferCardCapture: true });
-  try {
-    const created = s.links.create('demo-client', key(), input);
-    const accepted = s.links.accept(s.recipient, created.token!, key(), true);
-    const actor = s.auth.actor(s.recipientSession);
-    assert.equal(s.service.get(actor, accepted.requestId!).state, 'accepting');
-    assert.throws(
-      () =>
-        s.service.deliver(actor, accepted.requestId!, key(), [
-          { name: 'test.txt', content: 'YQ==' },
-        ]),
-      errorCode('INVALID_STATE'),
-    );
-    s.advance(7 * 86_400_000);
-    s.service.completeMockCapture(accepted.requestId!, key());
-    assert.equal(s.service.get(actor, accepted.requestId!).state, 'cancelled');
-    assert.equal(s.links.read(created.token!, s.recipient).paymentState, 'refunded');
-  } finally {
-    s.store.close();
-  }
-});
-
-test('宛先未指定の依頼にも作成件数の制限を適用する', () => {
+test('宛先未指定の依頼にも作成件数の制限を適用する', async () => {
   const s = setup();
   try {
-    for (let i = 0; i < 5; i++) s.links.create('demo-client', key(), input);
-    assert.throws(() => s.links.create('demo-client', key(), input), errorCode('LINK_LIMIT'));
-    for (const link of s.links.list('demo-client')) s.links.withdraw('demo-client', link.id, key());
+    for (let i = 0; i < 5; i++) await s.links.create('demo-client', key(), input);
+    await assert.rejects(
+      async () => await s.links.create('demo-client', key(), input),
+      errorCode('LINK_LIMIT'),
+    );
+    for (const link of s.links.list('demo-client'))
+      await s.links.withdraw('demo-client', link.id, key());
     for (let i = 0; i < 5; i++) {
-      const link = s.links.create('demo-client', key(), input);
-      s.links.withdraw('demo-client', link.link.id, key());
+      const link = await s.links.create('demo-client', key(), input);
+      await s.links.withdraw('demo-client', link.link.id, key());
     }
-    assert.throws(() => s.links.create('demo-client', key(), input), errorCode('LINK_LIMIT'));
+    await assert.rejects(
+      async () => await s.links.create('demo-client', key(), input),
+      errorCode('LINK_LIMIT'),
+    );
   } finally {
     s.store.close();
   }
 });
-
 test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を確認する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();

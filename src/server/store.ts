@@ -12,14 +12,14 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 5 && (version !== 0 || initialized)) {
+    if (version !== 6 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 5 before starting the application.',
+        'Unsupported database schema. Prepare schema version 6 before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 5) return;
+    if (version === 6) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
@@ -34,8 +34,13 @@ export class Store {
         cancelled_reason TEXT, delivery_version INTEGER NOT NULL DEFAULT 0
       ) STRICT;
       CREATE TABLE payments (
-        request_id TEXT PRIMARY KEY REFERENCES requests(id),
-        state TEXT NOT NULL, amount INTEGER NOT NULL, hold_until INTEGER NOT NULL
+        link_id TEXT PRIMARY KEY REFERENCES request_links(id),
+        request_id TEXT UNIQUE REFERENCES requests(id), provider TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('pending', 'authorized', 'capturing', 'captured', 'releasing', 'released')),
+        amount INTEGER NOT NULL, hold_until INTEGER NOT NULL DEFAULT 0,
+        checkout_id TEXT UNIQUE, checkout_url TEXT, intent_id TEXT UNIQUE,
+        checkout_expires_at INTEGER NOT NULL, origin TEXT NOT NULL,
+        checked_at INTEGER NOT NULL DEFAULT 0
       ) STRICT;
       CREATE TABLE effects (
         request_id TEXT NOT NULL REFERENCES requests(id), operation TEXT NOT NULL,
@@ -47,7 +52,7 @@ export class Store {
         PRIMARY KEY (actor_id, scope, key)
       ) STRICT;
       CREATE TABLE payment_events (
-        id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES requests(id)
+        id TEXT PRIMARY KEY, link_id TEXT NOT NULL REFERENCES request_links(id)
       ) STRICT;
       CREATE TABLE files (
         id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES requests(id),
@@ -65,9 +70,9 @@ export class Store {
         recipient_email TEXT,
         brief TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0),
         visibility TEXT NOT NULL,
-        state TEXT NOT NULL CHECK (state IN ('pending', 'accepted', 'cancelled')),
+        state TEXT NOT NULL CHECK (state IN ('awaiting_payment', 'pending', 'accepted', 'cancelled')),
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, deliver_by INTEGER NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE, cancelled_reason TEXT,
+        token_hash TEXT UNIQUE, cancelled_reason TEXT,
         request_id TEXT REFERENCES requests(id)
       ) STRICT;
       CREATE INDEX request_links_client ON request_links(client_id, created_at);
@@ -82,7 +87,7 @@ export class Store {
       CREATE TABLE link_optouts (
         email TEXT PRIMARY KEY, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 5;
+      PRAGMA user_version = 6;
     `),
     );
   }

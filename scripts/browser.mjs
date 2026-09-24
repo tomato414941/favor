@@ -12,8 +12,8 @@ probe.listen(0, '127.0.0.1');
 await once(probe, 'listening');
 const port = probe.address().port;
 await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()));
-const server = spawn(process.execPath, ['dist/server/server/main.js', '--demo'], {
-  env: { ...process.env, FAVOR_AUTH_MODE: 'demo', NODE_ENV: 'test', FAVOR_MAIL_DELIVERY: 'file', FAVOR_DATA_DIR: directory, FAVOR_PORT: String(port),
+const server = spawn(process.execPath, ['dist/server/server/main.js'], {
+  env: { ...process.env, FAVOR_PAYMENT_MODE: 'mock', FAVOR_AUTH_MODE: 'demo', NODE_ENV: 'test', FAVOR_MAIL_DELIVERY: 'file', FAVOR_DATA_DIR: directory, FAVOR_PORT: String(port),
     FAVOR_PUBLIC_ORIGIN: `http://127.0.0.1:${port}`, FAVOR_TRUST_PROXY: 'none' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });

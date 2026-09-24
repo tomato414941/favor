@@ -8,14 +8,12 @@ import { RequestLinkService } from '../src/server/request-links.js';
 import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { Mailbox } from './mailbox.js';
-
 const notFound = (error: unknown) => error instanceof DomainError && error.code === 'NOT_FOUND';
 const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
 const files = (image: string) => [
   { name: image, content: png },
   { name: 'メモ.txt', content: Buffer.from('制作メモ').toString('base64') },
 ];
-
 test('公開設定の納品済み依頼を作品として公開し、最新版の画像だけをログインなしで配信する', async () => {
   const store = new Store();
   const service = new RequestService(store);
@@ -24,19 +22,19 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
   const recipient = auth.identity(auth.demoLogin('creator')).account;
   const mailbox = new Mailbox();
   const links = new RequestLinkService(service, auth, mailbox.deliver);
-  const make = (visibility: Visibility) => {
-    const link = links.create('demo-client', randomUUID(), {
+  const make = async (visibility: Visibility) => {
+    const link = await links.create('demo-client', randomUUID(), {
       brief: `${visibility}の依頼`,
       amount: 12000,
       visibility,
       agreeToRules: true,
     });
-    return links.accept(recipient, link.token!, randomUUID(), true).requestId!;
+    return (await links.accept(recipient, link.token!, randomUUID(), true)).requestId!;
   };
-  const shown = make('public');
-  const hidden = make('hidden');
+  const shown = await make('public');
+  const hidden = await make('hidden');
   const maker = auth.identity(await mailbox.login(auth, 'maker@example.test'));
-  const mailed = links.create('demo-client', randomUUID(), {
+  const mailed = await links.create('demo-client', randomUUID(), {
     brief: 'anonymousの依頼',
     amount: 12000,
     visibility: 'anonymous',
@@ -44,19 +42,14 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
     delivery: 'email',
     recipientEmail: 'maker@example.test',
   });
-  const anonymous = links.accept(
-    maker.account,
-    mailed.token!,
-    randomUUID(),
-    true,
-    maker.email,
+  const anonymous = (
+    await links.accept(maker.account, mailed.token!, randomUUID(), true, maker.email)
   ).requestId!;
   const makerId = auth.actor(await mailbox.login(auth, 'maker@example.test'));
   assert.throws(() => service.publicWork(shown), notFound);
   for (const id of [shown, hidden])
-    service.deliver('demo-creator', id, randomUUID(), files('絵.png'));
-  service.deliver(makerId, anonymous, randomUUID(), files('絵.png'));
-
+    await service.deliver('demo-creator', id, randomUUID(), files('絵.png'));
+  await service.deliver(makerId, anonymous, randomUUID(), files('絵.png'));
   const ids = service.publicWorks().map((work) => work.id);
   assert.deepEqual(ids.sort(), [shown, anonymous].sort());
   const work = service.publicWork(shown);
@@ -66,7 +59,6 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
   assert.equal('amount' in work, false);
   assert.equal(service.publicWork(anonymous).clientName, '匿名の依頼者');
   assert.throws(() => service.publicWork(hidden), notFound);
-
   const image = work.files.find((file) => file.name === '絵.png')!;
   const text = work.files.find((file) => file.name === 'メモ.txt')!;
   assert.equal(service.publicImage(shown, image.id).type, 'image/png');
@@ -74,12 +66,10 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
   const hiddenImage = service.get('demo-creator', hidden).files[0]!;
   assert.throws(() => service.publicImage(hidden, hiddenImage.id), notFound);
   assert.throws(() => service.publicImage(anonymous, image.id), notFound);
-
-  service.deliver('demo-creator', shown, randomUUID(), files('完成.PNG'));
+  await service.deliver('demo-creator', shown, randomUUID(), files('完成.PNG'));
   assert.throws(() => service.publicImage(shown, image.id), notFound);
   const latest = service.publicWork(shown).files.find((file) => file.name === '完成.PNG')!;
   assert.equal(service.publicImage(shown, latest.id).type, 'image/png');
-
   const app = await buildApp(service, { demoAuth: true });
   try {
     const list = await app.inject('/api/works');

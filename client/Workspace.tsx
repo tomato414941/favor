@@ -108,7 +108,13 @@ export function Workspace({
       const updated = await api<RequestView>(path, { body, key: operation.key });
       keys.current.delete(path);
       setRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setNotice(action.type === 'deliver' ? '作品を渡しました。' : '依頼を中止しました。');
+      setNotice(
+        action.type === 'deliver'
+          ? updated.state === 'delivered'
+            ? '作品を渡しました。'
+            : '支払いを確認しています。'
+          : '依頼を中止しました。',
+      );
       await refresh();
     });
   }

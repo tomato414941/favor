@@ -79,7 +79,10 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
       (!origin && !['localhost', '127.0.0.1'].includes(request.hostname))
     )
       return reply.code(403).send({ message: 'アクセス先のURLを確認してください。' });
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+    if (
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
+      request.routeOptions.url !== '/api/payments/stripe-webhook'
+    ) {
       if (request.headers['x-favor-action'] !== '1')
         return reply.code(403).send({ message: '操作を確認できませんでした。' });
       const origin = request.headers.origin;
@@ -123,6 +126,7 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     ...(options.identity ? { publishableKey: options.identity.publishableKey } : {}),
   }));
   app.get('/api/request-settings', async () => ({
+    paymentMode: service.payments.provider.mode,
     terms: {
       recommendedAmount: service.policy.recommendedAmount,
       minimumAmount: service.policy.minimumAmount,
@@ -207,13 +211,47 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     },
     async (request, reply) => {
       const user = await actor(request);
-      const created = links.create(user, key(request), request.body);
-      if (created.link.delivery !== 'email') return reply.code(201).send(created);
+      const created = await links.create(user, key(request), request.body, pageOrigin(request));
+      if (created.link.state === 'awaiting_payment' || created.link.delivery !== 'email')
+        return reply.code(201).send(created);
       if (created.token)
         await links.send(user, created.link.id, created.token, pageOrigin(request), true);
       return reply.code(201).send({ link: links.get(user, created.link.id) });
     },
   );
+  app.post<{ Params: { id: string } }>('/api/links/:id/checkout', async (request) =>
+    links.checkout(await actor(request), request.params.id),
+  );
+  app.post<{ Params: { id: string } }>('/api/links/:id/complete-payment', async (request) => {
+    const user = await actor(request);
+    const result = await links.complete(user, request.params.id, key(request));
+    if (result.link.delivery !== 'email') return result;
+    if (result.token)
+      await links.send(user, result.link.id, result.token, pageOrigin(request), true);
+    return { link: links.get(user, result.link.id) };
+  });
+  if (service.payments.provider.event) {
+    await app.register(async (webhooks) => {
+      webhooks.removeContentTypeParser('application/json');
+      webhooks.addContentTypeParser(
+        'application/json',
+        { parseAs: 'buffer' },
+        (_request, body, done) => done(null, body),
+      );
+      webhooks.post<{ Body: Buffer }>(
+        '/api/payments/stripe-webhook',
+        { bodyLimit: 256 * 1024 },
+        async (request) => {
+          const signature = request.headers['stripe-signature'];
+          await service.payments.webhook(
+            request.body,
+            typeof signature === 'string' ? signature : '',
+          );
+          return { received: true };
+        },
+      );
+    });
+  }
   app.post<{ Params: { id: string } }>('/api/links/:id/reissue', async (request) => {
     const user = await actor(request);
     const result = links.reissue(user, request.params.id, key(request));
@@ -280,16 +318,25 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     const who = await optionalIdentity(request);
     return links.decline(linkToken(request), key(request), who?.account, who?.email);
   });
+  let reconciliation: Promise<void> | null = null;
   const expirationTimer = setInterval(() => {
-    try {
+    if (reconciliation) return;
+    reconciliation = (async () => {
       links.expire();
-    } catch {
-      app.log.error('Expiration failed');
-    }
+      service.expire();
+      await service.payments.reconcile();
+    })()
+      .catch(() => {
+        app.log.error('Expiration failed');
+      })
+      .finally(() => {
+        reconciliation = null;
+      });
   }, 1000);
   expirationTimer.unref();
   app.addHook('onClose', async () => {
     clearInterval(expirationTimer);
+    await reconciliation;
   });
   app.get('/api/session', async (request) => service.session(await actor(request)));
   app.get('/api/requests', async (request) => ({ requests: service.list(await actor(request)) }));

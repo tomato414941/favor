@@ -1,6 +1,6 @@
 #!/bin/sh
-# Sign in as the sample account (a Clerk user) and print a fresh request link URL.
-# Reuses the pending sample link (reissuing its URL) or creates one when none is pending.
+# Sign in as the sample account (a Clerk user) and print a Checkout or request link URL.
+# Complete test card entry at Checkout, then rerun to obtain the request link.
 #
 #   ops/sample-link.sh                                   # staging: origin and Clerk key from staging.env
 #   FAVOR_ORIGIN=http://127.0.0.1:3210 CLERK_SECRET_KEY=sk_test_... ops/sample-link.sh   # local server
@@ -36,14 +36,28 @@ api() {
     -H 'Content-Type: application/json' ${key:+-H "Idempotency-Key: $key"} ${body:+--data "$body"}
 }
 
-pending=$(api GET /links | jq -r '[.links[] | select(.state == "pending")][0].id // empty')
+links=$(api GET /links)
+pending=$(printf '%s' "$links" | jq -r '[.links[] | select(.state == "pending")][0].id // empty')
+draft=$(printf '%s' "$links" | jq -r '[.links[] | select(.state == "awaiting_payment")][0] // empty')
 if [ -n "$pending" ]; then
   result=$(api POST "/links/$pending/reissue" '{}' "$(new_key)")
+elif [ -n "$draft" ]; then
+  id=$(printf '%s' "$draft" | jq -r '.id')
+  if [ "$(printf '%s' "$draft" | jq -r '.paymentState')" = authorized ]; then
+    result=$(api POST "/links/$id/complete-payment" '{}' "$(new_key)")
+  else
+    result=$(api POST "/links/$id/checkout" '{}')
+  fi
 else
   body=$(jq -cn '{
     brief: "見本の依頼です。ステージングの表示確認用に作成しています。\n\n静かな夜の海辺と、遠くに見える灯台の風景を描いてください。人物は入れず、色味は落ち着いたものを希望します。用途は個人で楽しむためで、参考資料はありません。",
     amount: 12000, visibility: "hidden", agreeToRules: true }')
   result=$(api POST /links "$body" "$(new_key)")
+fi
+checkout=$(printf '%s' "$result" | jq -r '.checkoutUrl // empty')
+if [ -n "$checkout" ]; then
+  echo "$checkout"
+  exit 0
 fi
 token=$(printf '%s' "$result" | jq -r '.token // empty')
 [ -n "$token" ] || { echo "The link was not returned. Try again in a moment." >&2; exit 1; }

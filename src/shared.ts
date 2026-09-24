@@ -1,6 +1,7 @@
 export type Visibility = 'public' | 'anonymous' | 'hidden';
-export type RequestState = 'accepting' | 'accepted' | 'delivered' | 'cancelled';
-export type PaymentState = 'authorized' | 'captured' | 'released' | 'refunded';
+export type RequestState = 'delivering' | 'accepted' | 'delivered' | 'cancelled';
+export type PaymentState =
+  'pending' | 'authorized' | 'capturing' | 'captured' | 'releasing' | 'released';
 export type Role = 'client' | 'creator';
 
 export type LinkDelivery = 'self' | 'email';
@@ -60,7 +61,7 @@ export interface AuthOptions {
   mode: 'clerk' | 'demo';
   publishableKey?: string;
 }
-export type RequestLinkState = 'pending' | 'accepted' | 'cancelled';
+export type RequestLinkState = 'awaiting_payment' | 'pending' | 'accepted' | 'cancelled';
 export interface RequestLinkView {
   id: string;
   delivery: LinkDelivery;
@@ -83,16 +84,19 @@ export interface RequestLinkResult {
   link: RequestLinkView;
   /** Returned once. A lost response can be recovered by explicitly reissuing the link. */
   token?: string;
+  checkoutUrl?: string;
 }
 export const requestLabels: Record<RequestState, string> = {
-  accepting: '支払確認中',
+  delivering: '納品確認中',
   accepted: '制作中',
   delivered: '納品済み',
   cancelled: 'キャンセル',
 };
 export const paymentLabels: Record<PaymentState, string> = {
-  authorized: '確保済み',
+  pending: 'カード入力待ち',
+  authorized: '仮押さえ済み',
+  capturing: '支払確認中',
+  releasing: '解除手続き中',
   captured: '支払済み',
   released: '確保解除済み',
-  refunded: '返金済み',
 };

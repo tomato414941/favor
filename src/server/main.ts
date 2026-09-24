@@ -2,12 +2,11 @@ import { resolve } from 'node:path';
 import { buildApp } from './app.js';
 import { RequestService } from './service.js';
 import { Store } from './store.js';
+import { StripePayments } from './payment-provider.js';
 import { clerkResolver } from './identity.js';
 import { fileDelivery, resendDelivery, testDomainDelivery } from './email-delivery.js';
 import { parsePublicOrigin } from './public-origin.js';
 
-if (!process.argv.includes('--demo'))
-  throw new Error('Run with --demo to use the mock-payment application.');
 const port = Number(process.env.FAVOR_PORT ?? 3210);
 if (!Number.isInteger(port) || port < 1024 || port > 65535)
   throw new Error('FAVOR_PORT must be an integer from 1024 to 65535.');
@@ -43,7 +42,21 @@ const emailDelivery = testMailDomain
   ? testDomainDelivery(testMailDomain, fileDelivery(resolve(directory, 'mail')), providerDelivery)
   : providerDelivery;
 const store = new Store(resolve(directory, 'app.sqlite'));
-const service = new RequestService(store);
+const paymentMode = process.env.FAVOR_PAYMENT_MODE ?? 'mock';
+if (!['mock', 'stripe_test'].includes(paymentMode))
+  throw new Error('FAVOR_PAYMENT_MODE must be mock or stripe_test.');
+if (
+  paymentMode === 'mock' &&
+  publicOrigin &&
+  !['localhost', '127.0.0.1'].includes(parsePublicOrigin(publicOrigin).hostname)
+)
+  throw new Error('Public deployments require Stripe test payments.');
+const payments =
+  paymentMode === 'stripe_test'
+    ? new StripePayments(process.env.STRIPE_API_KEY ?? '', process.env.STRIPE_WEBHOOK_SECRET ?? '')
+    : undefined;
+if (payments) await payments.verifyAccount(process.env.STRIPE_ACCOUNT_ID ?? '');
+const service = new RequestService(store, Date.now, {}, payments);
 const identity =
   authMode === 'clerk'
     ? {
@@ -64,19 +77,10 @@ const app = await buildApp(service, {
   publicOrigin,
   trustLoopbackProxy: trustProxy === 'loopback',
 });
-const timer = setInterval(() => {
-  try {
-    service.expire();
-  } catch {
-    app.log.error('Request expiration failed');
-  }
-}, 1000);
-timer.unref();
 let closing = false;
 async function close() {
   if (closing) return;
   closing = true;
-  clearInterval(timer);
   await app.close();
   store.close();
 }
