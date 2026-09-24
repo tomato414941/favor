@@ -151,7 +151,7 @@ def main():
             expect(visiting.get_by_role('alert')).to_contain_text('この依頼リンクは利用できません')
             assert len(receiver.request.get(f'{base}/api/requests').json()['requests']) == 1
 
-            detail.get_by_role('link', name='依頼一覧へ', exact=True).click()
+            detail.get_by_role('link', name='受けた依頼へ', exact=True).click()
             work = receiving.get_by_role('article', name='依頼の詳細', exact=True)
             expect(work).to_contain_text('制作中')
             work.get_by_label('納品ファイルを選択', exact=True).set_input_files({'name': 'empty.txt', 'mimeType': 'text/plain', 'buffer': b''})
@@ -172,7 +172,7 @@ def main():
             layout(receiving, 'delivered')
 
             page.reload()
-            page.get_by_role('navigation').get_by_role('button', name='依頼一覧', exact=True).click()
+            page.get_by_role('navigation').get_by_role('button', name=re.compile('^送った依頼')).click()
             delivered = page.get_by_role('article', name='依頼の詳細', exact=True)
             expect(delivered).to_contain_text('第2版')
             with page.expect_download() as download_info:
@@ -183,7 +183,7 @@ def main():
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
             layout(receiving, 'email-login')
             register(receiving, receiver_email.upper())
-            receiving.get_by_role('navigation').get_by_role('button', name='依頼一覧', exact=True).click()
+            receiving.get_by_role('navigation').get_by_role('button', name=re.compile('^受けた依頼')).click()
             expect(receiving.get_by_role('article', name='依頼の詳細')).to_contain_text('第2版')
 
             brief2 = '今回は見送りを確認するための依頼です。'

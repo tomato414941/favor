@@ -115,7 +115,7 @@ def main():
             receiving.get_by_role("button", name="この依頼を受ける", exact=True).click()
             expect(receiving.get_by_role("article", name="依頼", exact=True)).to_contain_text("受諾済み")
             layout(receiving, "x-received")
-            receiving.get_by_role("link", name="依頼一覧へ", exact=True).click()
+            receiving.get_by_role("link", name="受けた依頼へ", exact=True).click()
             detail = receiving.get_by_role("article", name="依頼の詳細", exact=True)
             expect(detail).to_contain_text("制作中")
             assert recipient.request.get(f"{base}/api/auth/identity").json()["registered"] is True

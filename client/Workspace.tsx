@@ -6,8 +6,7 @@ import type { RequestFormSettings } from './RequestForm';
 import { RequestDetail, RequestStatus, type RequestAction } from './RequestDetail';
 import { yen } from './format';
 
-type Page = 'compose' | 'requests';
-type Tab = 'sent' | 'received';
+type Page = 'compose' | 'sent' | 'received';
 
 export function Workspace({
   initialRequestId,
@@ -24,8 +23,7 @@ export function Workspace({
   const [session, setSession] = useState<SessionView | null>(null);
   const [requests, setRequests] = useState<RequestView[]>([]);
   const [links, setLinks] = useState<RequestLinkView[]>([]);
-  const [page, setPage] = useState<Page>(initialRequestId ? 'requests' : 'compose');
-  const [chosenTab, setChosenTab] = useState<Tab | null>(null);
+  const [chosenPage, setChosenPage] = useState<Page | null>(initialRequestId ? null : 'compose');
   const [selectedId, setSelectedId] = useState<string | null>(initialRequestId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -124,7 +122,7 @@ export function Workspace({
     setLinks((current) => [link, ...current.filter((item) => item.id !== link.id)]);
   };
   const navigate = (next: Page) => {
-    setPage(next);
+    setChosenPage(next);
     setError('');
     setNotice('');
   };
@@ -132,22 +130,9 @@ export function Workspace({
   const sentRequests = requests.filter((request) => request.viewerRole === 'client');
   const receivedRequests = requests.filter((request) => request.viewerRole === 'creator');
   const initialRole = requests.find((request) => request.id === initialRequestId)?.viewerRole;
-  const tab: Tab =
-    chosenTab ??
-    (initialRole === 'creator'
-      ? 'received'
-      : initialRole === 'client'
-        ? 'sent'
-        : receivedRequests.length && !sentRequests.length && !pendingLinks.length
-          ? 'received'
-          : 'sent');
-  const visible = tab === 'sent' ? sentRequests : receivedRequests;
+  const page: Page = chosenPage ?? (initialRole === 'creator' ? 'received' : 'sent');
+  const visible = page === 'sent' ? sentRequests : receivedRequests;
   const selected = visible.find((request) => request.id === selectedId) ?? visible[0];
-  const select = (next: Tab) => {
-    setChosenTab(next);
-    setError('');
-    setNotice('');
-  };
   return (
     <>
       <div className="demo-banner">
@@ -171,10 +156,18 @@ export function Workspace({
                 依頼を作る
               </button>
               <button
-                aria-current={page === 'requests' ? 'page' : undefined}
-                onClick={() => navigate('requests')}
+                aria-current={page === 'sent' ? 'page' : undefined}
+                onClick={() => navigate('sent')}
               >
-                依頼一覧
+                送った依頼
+                <span className="count">{pendingLinks.length + sentRequests.length}</span>
+              </button>
+              <button
+                aria-current={page === 'received' ? 'page' : undefined}
+                onClick={() => navigate('received')}
+              >
+                受けた依頼
+                <span className="count">{receivedRequests.length}</span>
               </button>
             </nav>
             <div className="account-menu">
@@ -218,45 +211,18 @@ export function Workspace({
           </div>
         ) : (
           <>
-            {page === 'requests' && (
-              <>
-                <div className="section-heading workspace-heading">
-                  <h1>依頼一覧</h1>
-                  <button className="quiet-button" onClick={() => navigate('compose')}>
-                    依頼を作る
-                  </button>
-                </div>
-                <div className="tabs" role="tablist" aria-label="依頼の種類">
-                  <button role="tab" aria-selected={tab === 'sent'} onClick={() => select('sent')}>
-                    送った依頼
-                    <span className="count">{pendingLinks.length + sentRequests.length}</span>
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={tab === 'received'}
-                    onClick={() => select('received')}
-                  >
-                    受けた依頼
-                    <span className="count">{receivedRequests.length}</span>
-                  </button>
-                </div>
-              </>
-            )}
-            <div className={page === 'requests' ? 'tab-panel' : undefined}>
+            <div className={page === 'compose' ? undefined : 'list-panel'}>
               <RequestLinks
                 settings={settings}
-                mode={page === 'compose' ? 'compose' : tab === 'sent' ? 'list' : 'hidden'}
+                mode={page === 'compose' ? 'compose' : page === 'sent' ? 'list' : 'hidden'}
                 links={pendingLinks}
                 busy={busy}
                 run={run}
                 notify={setNotice}
                 onChange={changeLink}
-                onCreated={() => {
-                  setChosenTab('sent');
-                  setPage('requests');
-                }}
+                onCreated={() => setChosenPage('sent')}
               />
-              {page === 'requests' &&
+              {page !== 'compose' &&
                 (visible.length ? (
                   <div className="requests-layout">
                     <div className="request-list" aria-label="依頼を選択">
@@ -297,7 +263,7 @@ export function Workspace({
                       />
                     )}
                   </div>
-                ) : tab === 'sent' ? (
+                ) : page === 'sent' ? (
                   !pendingLinks.length && (
                     <div className="empty-state">
                       <h2>送った依頼はありません</h2>
