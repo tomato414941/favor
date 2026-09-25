@@ -47,7 +47,18 @@ const assets = resolve('build/client/assets') + sep;
 /** Hashed build output only; anything else is a page or an API answer. */
 function serveAsset(request, response) {
   if (!['GET', 'HEAD'].includes(request.method)) return false;
-  const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+  let path;
+  try {
+    path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+  } catch {
+    response.writeHead(400, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    response.end('Bad Request');
+    return true;
+  }
   if (!path.startsWith('/assets/')) return false;
   const file = resolve(assets, `.${path.slice('/assets'.length)}`);
   const type = types[extname(file)];
