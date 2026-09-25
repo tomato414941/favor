@@ -67,8 +67,8 @@ export default function MeLayout({ loaderData }: Route.ComponentProps) {
     ? 'new'
     : pathname.startsWith('/me/works')
       ? 'mine'
-      : pathname.startsWith('/me/payouts')
-        ? 'payouts'
+      : pathname.startsWith('/me/settings')
+        ? 'settings'
         : pathname.startsWith('/me/received') || current?.viewerRole === 'creator'
           ? 'received'
           : 'sent';

@@ -267,7 +267,7 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     const other = await app.login('link_other@example.test');
     for (const cookie of [first, other])
       assert.equal(
-        (await app.request('/me/payouts', { cookie, form: { intent: 'onboard' } })).status,
+        (await app.request('/me/settings', { cookie, form: { intent: 'onboard' } })).status,
         200,
       );
     const operation = key();

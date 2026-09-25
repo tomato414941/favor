@@ -111,7 +111,7 @@ export function RequestDetail({
           {request.transferState === 'transferred'
             ? '売上をStripeに反映しました。'
             : '売上を処理しています。'}{' '}
-          <Link to="/me/payouts">受取先を確認</Link>
+          <Link to="/me/settings">受取先を確認</Link>
         </p>
       )}
       {request.files.length > 0 && (

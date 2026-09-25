@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
 import type {
+  ProfileView,
   RequestLinkInput,
   RequestState,
   RequestView,
@@ -27,6 +28,7 @@ export const DEMO_POLICY = {
   minimumAmount: 1000,
   maximumAmount: 299999,
   maximumBriefLength: 2000,
+  maximumNameLength: 40,
   maximumFiles: 24,
   maximumUploadBytes: 8 * 1024 * 1024,
 };
@@ -34,6 +36,7 @@ type Policy = typeof DEMO_POLICY;
 interface UserRow {
   id: string;
   name: string;
+  display_name: string | null;
 }
 interface RequestRow {
   id: string;
@@ -90,11 +93,32 @@ export class RequestService {
   private one<T>(sql: string, ...params: SQLInputValue[]): T | undefined {
     return this.store.db.prepare(sql).get(...params) as unknown as T | undefined;
   }
+  /** The name others see: the one the person chose, else the one their sign-in provides. */
   private user(id: string): UserRow {
     return (
-      this.one<UserRow>('SELECT * FROM users WHERE id = ?', id) ??
-      fail('UNAUTHORIZED', 'ログインしてください。', 401)
+      this.one<UserRow>(
+        'SELECT id, COALESCE(display_name, name) AS name, display_name FROM users WHERE id = ?',
+        id,
+      ) ?? fail('UNAUTHORIZED', 'ログインしてください。', 401)
     );
+  }
+  profile(actor: string): ProfileView {
+    const row = this.user(actor);
+    return { name: row.name, displayName: row.display_name };
+  }
+  setDisplayName(actor: string, input: unknown): ProfileView {
+    this.user(actor);
+    const value = typeof input === 'string' ? input.trim().replace(/\s+/g, ' ') : '';
+    if (value.length > this.policy.maximumNameLength || /[\x00-\x1f\x7f]/.test(value))
+      fail(
+        'INVALID_NAME',
+        `表示名は${this.policy.maximumNameLength}文字以内で入力してください。`,
+        400,
+      );
+    this.store.db
+      .prepare('UPDATE users SET display_name = ? WHERE id = ?')
+      .run(value || null, actor);
+    return this.profile(actor);
   }
   private row(id: string): RequestRow {
     return (

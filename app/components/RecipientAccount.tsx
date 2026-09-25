@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useFetcher, useNavigate, useSearchParams } from 'react-router';
-import { PLATFORM_FEE_PERCENT, type RecipientView } from '../../src/shared';
+import type { RecipientView } from '../../src/shared';
 import type { ActionFailure } from './ui';
 
 const returnKey = 'favor.recipient-return';
@@ -82,27 +82,8 @@ export function RecipientAccount({
   }, [full, account.state]);
   if (!full && account.state === 'ready') return null;
   return (
-    <section
-      className={full ? 'request-detail recipient-account' : 'recipient-account'}
-      aria-label="売上の受け取り"
-    >
-      <h2>売上の受け取り</h2>
-      {full && (
-        <dl className="detail-facts">
-          <div>
-            <dt>利用料</dt>
-            <dd>{PLATFORM_FEE_PERCENT}%（税込）</dd>
-          </div>
-          <div>
-            <dt>振込手数料</dt>
-            <dd>無料</dd>
-          </div>
-          <div>
-            <dt>振込手続き</dt>
-            <dd>毎週金曜日</dd>
-          </div>
-        </dl>
-      )}
+    <section className="recipient-account" aria-label={full ? '受取先' : '売上の受け取り'}>
+      {!full && <h2>売上の受け取り</h2>}
       {fetcher.data?.error && (
         <p className="message error" role="alert">
           {fetcher.data.error.message}
@@ -128,7 +109,7 @@ export function RecipientAccount({
             Stripeを開く
           </button>
         )}
-        {full && (
+        {full && onboarding.current === 'return' && (
           <button className="text-button" onClick={returnToRequest}>
             依頼に戻る
           </button>

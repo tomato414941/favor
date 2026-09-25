@@ -166,7 +166,7 @@ def main():
             expect(detail.get_by_role('button', name='受ける', exact=True)).to_be_disabled()
             layout(receiving, 'recipient-onboarding')
             # The stand-in for Stripe returns straight to the payouts page, which leads back to the request.
-            with receiving.expect_navigation(url='**/me/payouts?onboarding=return'):
+            with receiving.expect_navigation(url='**/me/settings?onboarding=return'):
                 detail.get_by_role('button', name='受取先を登録', exact=True).click()
             expect(detail.get_by_role('checkbox', name='内容・金額・期限を確認しました', exact=True)).to_be_visible()
             expect(receiving).to_have_url(url)
@@ -220,12 +220,19 @@ def main():
             expect(work).to_contain_text('第2版')
             layout(receiving, 'delivered')
             receiving.get_by_role('button', name=re.compile(receiver_email)).click()
-            receiving.get_by_role('menuitem', name='受取先', exact=True).click()
+            receiving.get_by_role('menuitem', name='設定', exact=True).click()
+            expect(receiving.get_by_role('heading', name='設定', exact=True)).to_be_visible()
             payout = receiving.get_by_role('region', name='売上の受け取り', exact=True)
-            expect(payout).to_contain_text('8%（税込）')
-            expect(payout.locator('.detail-facts > div').filter(has=receiving.locator('dt', has_text='振込手数料'))).to_contain_text('無料')
+            expect(payout).to_contain_text('利用料8%（税込）')
+            expect(payout).to_contain_text('振込手数料はかかりません')
             expect(payout).to_contain_text('毎週金曜日')
-            layout(receiving, 'payouts')
+            expect(payout.get_by_role('region', name='受取先', exact=True)).to_contain_text('登録済み')
+            profile = receiving.get_by_role('region', name='プロフィール', exact=True)
+            profile.get_by_label('表示名', exact=True).fill('澪')
+            profile.get_by_role('button', name='保存', exact=True).click()
+            expect(profile.get_by_role('status')).to_contain_text('保存しました')
+            expect(receiving.get_by_role('region', name='依頼の受け取り', exact=True)).to_contain_text('受け取ります')
+            layout(receiving, 'settings')
             receiving.go_back()
             expect(work).to_contain_text('第2版')
 

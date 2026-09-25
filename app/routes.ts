@@ -14,7 +14,7 @@ export default [
     route('sent', 'routes/me-sent.tsx'),
     route('received', 'routes/me-received.tsx'),
     route('works', 'routes/me-works.tsx'),
-    route('payouts', 'routes/me-payouts.tsx'),
+    route('settings', 'routes/me-settings.tsx'),
     route('requests/:id', 'routes/me-request.tsx'),
     route('links/:id', 'routes/me-link.tsx'),
   ]),

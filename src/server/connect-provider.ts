@@ -125,8 +125,8 @@ export class StripeConnect implements ConnectProvider {
         type: 'account_onboarding',
         account_onboarding: {
           configurations: ['recipient'],
-          refresh_url: `${origin}/me/payouts?onboarding=refresh`,
-          return_url: `${origin}/me/payouts?onboarding=return`,
+          refresh_url: `${origin}/me/settings?onboarding=refresh`,
+          return_url: `${origin}/me/settings?onboarding=return`,
           collection_options: { fields: 'eventually_due' },
         },
       },
@@ -210,7 +210,7 @@ export class MockConnect implements ConnectProvider {
   }
   /** Stands in for Stripe's hosted onboarding: the person comes straight back as registered. */
   async onboarding(_recipient: Recipient, origin: string) {
-    return `${origin}/me/payouts?onboarding=return`;
+    return `${origin}/me/settings?onboarding=return`;
   }
   async dashboard(_recipient: Recipient) {
     return null;

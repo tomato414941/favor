@@ -53,6 +53,12 @@ export interface RequestView extends WorkView {
 export interface SessionView {
   name: string;
 }
+export interface ProfileView {
+  /** The name shown to others. */
+  name: string;
+  /** The name the person chose, if any. */
+  displayName: string | null;
+}
 export interface SocialAccount {
   provider: string;
   subject: string;

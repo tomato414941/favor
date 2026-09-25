@@ -12,18 +12,18 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 8 && (version !== 0 || initialized)) {
+    if (version !== 9 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 8 before starting the application.',
+        'Unsupported database schema. Prepare schema version 9 before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 8) return;
+    if (version === 9) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT, display_name TEXT
       ) STRICT;
       CREATE TABLE requests (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
@@ -101,7 +101,7 @@ export class Store {
       CREATE TABLE link_optouts (
         email TEXT PRIMARY KEY, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 8;
+      PRAGMA user_version = 9;
     `),
     );
   }

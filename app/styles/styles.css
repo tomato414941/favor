@@ -1154,3 +1154,33 @@ nav .count {
   display: grid;
   gap: 18px;
 }
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 24px;
+}
+.settings-section {
+  padding-block: 22px 26px;
+  border-top: 1px solid var(--line);
+}
+.settings-section > h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings-section > p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.settings-form .field {
+  max-width: 360px;
+}
+.settings-form .action-buttons span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.settings-section .recipient-account {
+  margin-block: 0;
+}

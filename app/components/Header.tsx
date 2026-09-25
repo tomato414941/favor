@@ -4,7 +4,7 @@ import { Link, useFetcher, useLocation, useNavigate } from 'react-router';
 import type { IdentitySession } from '../../src/shared';
 import { useSite } from '../root';
 
-export type Section = 'works' | 'new' | 'sent' | 'received' | 'mine' | 'payouts' | null;
+export type Section = 'works' | 'new' | 'sent' | 'received' | 'mine' | 'settings' | null;
 
 function ClerkLogout({ busy }: { busy: boolean }) {
   const clerk = useClerk();
@@ -77,10 +77,10 @@ function AccountMenu({ label, active, busy }: { label: string; active: Section; 
           <Link
             className="menu-item"
             role="menuitem"
-            to="/me/payouts"
-            aria-current={active === 'payouts' ? 'page' : undefined}
+            to="/me/settings"
+            aria-current={active === 'settings' ? 'page' : undefined}
           >
-            受取先
+            設定
           </Link>
           <LogoutButton busy={busy} />
         </div>

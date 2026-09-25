@@ -216,14 +216,14 @@ test('ログイン中の本人のメールと受取先だけを使い、登録�
   const s = setup();
   const app = await serve(s.service);
   try {
-    const anonymous = await app.request('/me/payouts');
+    const anonymous = await app.request('/me/settings');
     assert.equal(anonymous.status, 302);
-    assert.equal(anonymous.headers.get('location'), '/login?next=%2Fme%2Fpayouts');
+    assert.equal(anonymous.headers.get('location'), '/login?next=%2Fme%2Fsettings');
     const cookie = await app.login('recipient@example.test');
     const onboard = { intent: 'onboard' };
     assert.equal(
       (
-        await app.request('/me/payouts', {
+        await app.request('/me/settings', {
           cookie,
           form: onboard,
           headers: { origin: 'https://attacker.example' },
@@ -233,7 +233,7 @@ test('ログイン中の本人のメールと受取先だけを使い、登録�
     );
     assert.equal(
       (
-        await app.request('/me/payouts', {
+        await app.request('/me/settings', {
           cookie,
           form: onboard,
           headers: { 'sec-fetch-site': 'cross-site' },
@@ -241,7 +241,7 @@ test('ログイン中の本人のメールと受取先だけを使い、登録�
       ).status,
       403,
     );
-    const response = await app.request('/me/payouts', {
+    const response = await app.request('/me/settings', {
       cookie,
       form: {
         ...onboard,
@@ -253,7 +253,7 @@ test('ログイン中の本人のメールと受取先だけを使い、登録�
     assert.equal(response.status, 200);
     assert.deepEqual(s.connect.emails, ['recipient@example.test']);
     assert.deepEqual(s.connect.origins, ['http://localhost']);
-    const state = await app.request('/me/payouts?onboarding=return&state=ready', { cookie });
+    const state = await app.request('/me/settings?onboarding=return&state=ready', { cookie });
     assert.equal(state.status, 200);
     assert.match(await state.text(), /登録内容を確認してください。/);
     assert.equal(
@@ -262,7 +262,7 @@ test('ログイン中の本人のメールと受取先だけを使い、登録�
         .get([...s.connect.accounts.values()][0]!)!.state,
       'incomplete',
     );
-    const dashboard = await app.request('/me/payouts', {
+    const dashboard = await app.request('/me/settings', {
       cookie,
       form: { intent: 'dashboard', account: 'acct_other' },
     });
