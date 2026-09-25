@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { data, useFetcher } from 'react-router';
+import { data, Link, useFetcher } from 'react-router';
 import type { Route } from './+types/me-settings';
 import { PLATFORM_FEE_PERCENT } from '../../src/shared';
 import { RecipientAccount } from '../components/RecipientAccount';
@@ -8,6 +8,7 @@ import { useAutoRevalidate, type ActionFailure } from '../components/ui';
 import { favorOf } from '../server/context';
 import { recipientAction } from '../server/recipient';
 import { attempt, field, invalid, problem, requireIdentity } from '../server/session';
+import { useSite } from '../root';
 import { useMe } from './me';
 
 export { clientAction };
@@ -133,12 +134,24 @@ function MailPreference({ blocked }: { blocked: boolean }) {
 
 export default function Settings({ loaderData }: Route.ComponentProps) {
   const { identity } = useMe();
+  const { mode } = useSite();
   const { profile, maximumNameLength, mail, account } = loaderData;
   useAutoRevalidate(30000, account.state !== 'ready');
   return (
     <div className="settings-page">
       <h1 className="page-title">設定</h1>
       <Profile name={profile.displayName ?? profile.name} maximum={maximumNameLength} />
+      {mode === 'clerk' && (
+        <section className="settings-section" aria-labelledby="settings-account">
+          <h2 id="settings-account">アカウント</h2>
+          <p>メールアドレスの変更、Google や X との連携、ログイン中の端末の確認。</p>
+          <div className="action-buttons">
+            <Link className="quiet-button" to="/me/account">
+              アカウントを管理
+            </Link>
+          </div>
+        </section>
+      )}
       {mail && <MailPreference blocked={mail.blocked} />}
       <section className="settings-section" aria-labelledby="settings-payouts">
         <h2 id="settings-payouts">売上の受け取り</h2>

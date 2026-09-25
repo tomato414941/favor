@@ -1184,3 +1184,14 @@ nav .count {
 .settings-section .recipient-account {
   margin-block: 0;
 }
+.account-page {
+  padding-top: 24px;
+}
+.account-page .cl-rootBox {
+  width: 100%;
+}
+.account-page .cl-cardBox {
+  max-width: 100%;
+  box-shadow: none;
+  border: 1px solid var(--line);
+}
