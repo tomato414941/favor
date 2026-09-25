@@ -74,6 +74,7 @@ export class StripePayments implements PaymentProvider {
         ],
         payment_intent_data: {
           capture_method: 'manual',
+          transfer_group: `favor:${payment.link_id}`,
           metadata: { favor_link_id: payment.link_id },
         },
         metadata: { favor_link_id: payment.link_id },

@@ -713,6 +713,12 @@ nav .count {
   flex-wrap: wrap;
   gap: 12px 18px;
 }
+.recipient-account {
+  margin-block: 24px;
+}
+.recipient-account > p {
+  margin-block: 12px;
+}
 .waiting-note,
 .payment-pending,
 .cancellation-note {

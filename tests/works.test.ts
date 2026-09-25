@@ -20,6 +20,7 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
   const auth = new AuthService(store, Date.now, { allowDemo: true });
   auth.demoLogin('client');
   const recipient = auth.identity(auth.demoLogin('creator')).account;
+  await service.recipients.onboard(recipient.subject, 'http://localhost');
   const mailbox = new Mailbox();
   const links = new RequestLinkService(service, auth, mailbox.deliver);
   const make = async (visibility: Visibility) => {
@@ -34,6 +35,7 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
   const shown = await make('public');
   const hidden = await make('hidden');
   const maker = auth.identity(await mailbox.login(auth, 'maker@example.test'));
+  await service.recipients.onboard(maker.account.subject, 'http://localhost');
   const mailed = await links.create('demo-client', randomUUID(), {
     brief: 'anonymousの依頼',
     amount: 12000,

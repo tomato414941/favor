@@ -35,6 +35,7 @@ function parse(value: string): Route {
   if (path === '/me/new') return { kind: 'me', page: 'new', requestId: null };
   if (path === '/me/received') return { kind: 'me', page: 'received', requestId: null };
   if (path === '/me/works') return { kind: 'me', page: 'works', requestId: null };
+  if (path === '/me/payouts') return { kind: 'me', page: 'payouts', requestId: null };
   const request = /^\/me\/requests\/([A-Za-z0-9-]{1,100})$/.exec(path);
   if (request) return { kind: 'me', page: 'request', requestId: request[1]! };
   const link = /^\/me\/links\/([A-Za-z0-9-]{1,100})$/.exec(path);

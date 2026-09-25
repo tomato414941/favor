@@ -14,6 +14,8 @@ import { Store } from './store.js';
 import { DomainError } from './errors.js';
 import { Payments, type PaymentRow } from './payments.js';
 import { MockPayments, type PaymentProvider } from './payment-provider.js';
+import { MockConnect, type ConnectProvider } from './connect-provider.js';
+import { Recipients } from './recipients.js';
 export { DomainError } from './errors.js';
 
 const DAY = 86_400_000;
@@ -68,11 +70,13 @@ const fail = (code: string, message: string, status = 409): never => {
 export class RequestService {
   readonly policy: Policy;
   readonly payments: Payments;
+  readonly recipients: Recipients;
   constructor(
     readonly store: Store,
     readonly clock: () => number = Date.now,
     policy: Partial<Policy> = {},
     provider?: PaymentProvider,
+    connect: ConnectProvider = new MockConnect(),
   ) {
     this.policy = { ...DEMO_POLICY, ...policy };
     this.payments = new Payments(
@@ -80,6 +84,7 @@ export class RequestService {
       provider ?? new MockPayments(clock, { holdMs: this.policy.authorizationMs }),
       clock,
     );
+    this.recipients = new Recipients(store, connect, clock);
   }
   private one<T>(sql: string, ...params: SQLInputValue[]): T | undefined {
     return this.store.db.prepare(sql).get(...params) as unknown as T | undefined;
@@ -151,6 +156,11 @@ export class RequestService {
       viewerRole: actor === row.client_id ? 'client' : 'creator',
       amount: row.amount,
       paymentState: this.payment(row.id).state,
+      transferState:
+        this.one<{ state: 'pending' | 'transferred' }>(
+          'SELECT state FROM transfers WHERE request_id = ?',
+          row.id,
+        )?.state ?? null,
       cancelledReason: row.cancelled_reason,
     };
   }
@@ -268,6 +278,7 @@ export class RequestService {
           dates.deliverBy,
         );
       this.store.db.prepare('UPDATE payments SET request_id = ? WHERE link_id = ?').run(id, linkId);
+      this.recipients.bind(actor, id, input.amount);
       this.effect(id, 'authorize');
       this.audit(id, actor, 'accept');
       return this.view(this.row(id), actor);
@@ -318,6 +329,11 @@ export class RequestService {
     files: UploadInput[],
   ): Promise<RequestView> {
     this.expire();
+    const request = this.row(id);
+    this.participant(actor, request);
+    if (actor !== request.creator_id)
+      fail('FORBIDDEN', '納品できるのは依頼先の作り手だけです。', 403);
+    if (request.state === 'accepted') await this.recipients.requireReady(actor);
     if (!Array.isArray(files) || files.length < 1 || files.length > this.policy.maximumFiles)
       fail(
         'INVALID_FILES',
@@ -377,6 +393,11 @@ export class RequestService {
       return id;
     });
     await this.payments.settle(this.payment(id).link_id);
+    try {
+      await this.recipients.settle(id);
+    } catch {
+      /* Capture succeeded; retry the saved transfer without charging again. */
+    }
     return this.get(actor, id);
   }
   download(actor: string, requestId: string, fileId: string): FileRow {

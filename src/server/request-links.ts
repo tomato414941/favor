@@ -430,11 +430,14 @@ export class RequestLinkService {
   ): Promise<RequestLinkView> {
     this.expire();
     const current = this.accessible(token, account, email);
+    if (agreed !== true)
+      throw new DomainError('RULES_REQUIRED', '依頼のルールへの同意が必要です。', 400);
+    if (current.client_id === account.subject)
+      throw new DomainError('FORBIDDEN', 'この依頼は受け取れません。', 403);
+    if (current.state === 'pending') await this.requests.recipients.requireReady(account.subject);
     await this.requests.payments.refresh(current.id);
     return this.store.transaction(() => {
       const row = this.accessible(token, account, email);
-      if (agreed !== true)
-        throw new DomainError('RULES_REQUIRED', '依頼のルールへの同意が必要です。', 400);
       this.command(socialActor(account), `accept:${row.id}`, key, { agreed: true }, () => {
         this.pending(row);
         const actor = this.auth.registerRecipient(account);

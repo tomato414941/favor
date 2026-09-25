@@ -1,7 +1,7 @@
 import type { IdentitySession } from '../src/shared';
 import { Link } from './ui';
 
-export type Section = 'works' | 'new' | 'sent' | 'received' | 'mine' | null;
+export type Section = 'works' | 'new' | 'sent' | 'received' | 'mine' | 'payouts' | null;
 
 /** One header for every page: the site on the left, the signed-in person's own pages on the right. */
 export function SiteHeader({
@@ -51,6 +51,9 @@ export function SiteHeader({
             </Link>
           </nav>
           <div className="account-menu">
+            <Link href="/me/payouts" aria-current={active === 'payouts' ? 'page' : undefined}>
+              受取先
+            </Link>
             <span title={label ?? identity?.email ?? identity?.account.name}>
               {label ?? identity?.email ?? identity?.account.name}
             </span>

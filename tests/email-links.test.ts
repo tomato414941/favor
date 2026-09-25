@@ -27,6 +27,7 @@ async function setup() {
   const sender = auth.identity(await mailbox.login(auth, 'client@example.test'));
   const senderId = auth.actor(await mailbox.login(auth, 'client@example.test'));
   const maker = auth.identity(await mailbox.login(auth, 'maker@example.test'));
+  await service.recipients.onboard(maker.account.subject, 'http://localhost');
   const other = auth.identity(await mailbox.login(auth, 'other@example.test'));
   return { store, mailbox, service, auth, links, sender, senderId, maker, other };
 }

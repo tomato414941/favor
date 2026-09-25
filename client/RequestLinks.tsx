@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { RecipientAccount } from './RecipientAccount';
 import type {
   AuthOptions,
   IdentitySession,
@@ -369,6 +370,7 @@ export function RequestLinkLanding({ token, options }: { token: string; options:
   const [declined, setDeclined] = useState(false);
   const [loginRequired, setLoginRequired] = useState(false);
   const [blocked, setBlocked] = useState<boolean | null>(null);
+  const [recipientReady, setRecipientReady] = useState(false);
   const actions = useLinkActions();
   async function load() {
     setLink(null);
@@ -489,6 +491,7 @@ export function RequestLinkLanding({ token, options }: { token: string; options:
                             void actions.run(async () => {
                               await api('/auth/logout', { body: {} });
                               setIdentity(null);
+                              setRecipientReady(false);
                               setAgreed(false);
                               setAuthenticate(true);
                             })
@@ -497,6 +500,11 @@ export function RequestLinkLanding({ token, options }: { token: string; options:
                           別のアカウントを使う
                         </button>
                       </div>
+                      <RecipientAccount
+                        key={identity.account.subject}
+                        userId={identity.account.subject}
+                        onReady={setRecipientReady}
+                      />
                       <label className="checkbox-line request-link-agreement">
                         <input
                           type="checkbox"
@@ -508,7 +516,7 @@ export function RequestLinkLanding({ token, options }: { token: string; options:
                       </label>
                       <button
                         className="primary"
-                        disabled={actions.busy || !agreed}
+                        disabled={actions.busy || !agreed || !recipientReady}
                         onClick={() => void accept()}
                       >
                         受ける

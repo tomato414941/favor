@@ -3,6 +3,7 @@ import { buildApp } from './app.js';
 import { RequestService } from './service.js';
 import { Store } from './store.js';
 import { StripePayments } from './payment-provider.js';
+import { StripeConnect } from './connect-provider.js';
 import { clerkResolver } from './identity.js';
 import { fileDelivery, resendDelivery, testDomainDelivery } from './email-delivery.js';
 import { parsePublicOrigin } from './public-origin.js';
@@ -56,7 +57,13 @@ const payments =
     ? new StripePayments(process.env.STRIPE_API_KEY ?? '', process.env.STRIPE_WEBHOOK_SECRET ?? '')
     : undefined;
 if (payments) await payments.verifyAccount(process.env.STRIPE_ACCOUNT_ID ?? '');
-const service = new RequestService(store, Date.now, {}, payments);
+const service = new RequestService(
+  store,
+  Date.now,
+  {},
+  payments,
+  payments ? new StripeConnect(payments.stripe) : undefined,
+);
 const identity =
   authMode === 'clerk'
     ? {

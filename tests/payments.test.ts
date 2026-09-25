@@ -79,7 +79,7 @@ class Cards implements PaymentProvider {
   }
 }
 
-function setup(path?: string, cards = new Cards()) {
+async function setup(path?: string, cards = new Cards()) {
   let now = Date.now();
   const store = new Store(path);
   const service = new RequestService(store, () => now, {}, cards);
@@ -88,6 +88,7 @@ function setup(path?: string, cards = new Cards()) {
   const session = auth.demoLogin('creator');
   const recipient = auth.identity(session).account;
   const links = new RequestLinkService(service, auth);
+  await service.recipients.onboard(recipient.subject, 'http://localhost');
   const create = () => links.create(sender, randomUUID(), input, 'https://favor.example');
   const authorize = async () => {
     const draft = await create();
@@ -112,7 +113,7 @@ function setup(path?: string, cards = new Cards()) {
 }
 
 test('カード入力を再開し、金額の仮押さえを確認してから秘密のリンクを発行する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const key = randomUUID();
     const [one, retry] = await Promise.all([
@@ -173,7 +174,7 @@ test('カード入力を再開し、金額の仮押さえを確認してから�
 test('支払確定の通信断から再起動後に復旧し、確定を確認したファイルを一度だけ公開する', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'favor-payment-'));
   const path = join(directory, 'app.sqlite');
-  let s = setup(path);
+  let s = await setup(path);
   let open = true;
   try {
     const paid = await s.authorize();
@@ -194,7 +195,7 @@ test('支払確定の通信断から再起動後に復旧し、確定を確認�
     const cards = s.cards;
     s.store.close();
     open = false;
-    s = setup(path, cards);
+    s = await setup(path, cards);
     open = true;
     s.advance(10000);
     await s.service.payments.reconcile();
@@ -202,6 +203,9 @@ test('支払確定の通信断から再起動後に復旧し、確定を確認�
     assert.equal(delivered.state, 'delivered');
     assert.equal(delivered.files.length, 1);
     assert.equal(cards.captures, 1);
+    assert.equal(delivered.transferState, 'pending');
+    await s.service.recipients.reconcile();
+    assert.equal(s.service.get(s.sender, id).transferState, 'transferred');
     await s.service.payments.settle(paid.link.id);
     assert.equal(s.service.get(s.sender, id).deliveryVersion, 1);
   } finally {
@@ -211,7 +215,7 @@ test('支払確定の通信断から再起動後に復旧し、確定を確認�
 });
 
 test('解除の失敗を手続き中として保存し、再試行で仮押さえを解除する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const paid = await s.authorize();
     s.cards.failRelease = true;
@@ -231,7 +235,7 @@ test('解除の失敗を手続き中として保存し、再試行で仮押さ�
 });
 
 test('カード入力画面の準備に失敗した依頼を取り消して終了する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     s.cards.failCheckout = true;
     const key = randomUUID();
@@ -247,7 +251,7 @@ test('カード入力画面の準備に失敗した依頼を取り消して終�
 });
 
 test('カード入力の放置と受諾後の納品期限切れで仮押さえを解除する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const draft = await s.create();
     s.cards.authorize(draft.link.id, s.now() + 7 * DAY);
@@ -268,7 +272,7 @@ test('カード入力の放置と受諾後の納品期限切れで仮押さえ�
 });
 
 test('決済通知の署名を検証し、重複や順不同の通知を現在のStripeの状態に合わせる', async () => {
-  const s = setup();
+  const s = await setup();
   const app = await buildApp(s.service, { demoAuth: true });
   try {
     const draft = await s.create();

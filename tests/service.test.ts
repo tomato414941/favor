@@ -34,6 +34,7 @@ function setup(options: ConstructorParameters<typeof MockPayments>[1] = {}) {
     agreeToRules: true,
   };
   const create = async (extra: Partial<RequestLinkInput> = {}) => {
+    await service.recipients.onboard(recipient.subject, 'http://localhost');
     const link = await links.create('demo-client', randomUUID(), { ...input, ...extra });
     const accepted = await links.accept(recipient, link.token!, randomUUID(), true);
     return service.get('demo-creator', accepted.requestId!);
@@ -147,6 +148,7 @@ test('メールで届けた匿名依頼は、作り手にも公開情報にも�
   const { service, auth, links, input } = setup();
   const mailbox = new Mailbox();
   const maker = auth.identity(await mailbox.login(auth, 'maker@example.test'));
+  await service.recipients.onboard(maker.account.subject, 'http://localhost');
   const link = await links.create('demo-client', randomUUID(), {
     ...input,
     visibility: 'anonymous',

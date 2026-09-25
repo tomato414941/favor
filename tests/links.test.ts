@@ -18,7 +18,7 @@ const input: RequestLinkInput = {
 };
 const errorCode = (code: string) => (error: unknown) =>
   error instanceof DomainError && error.code === code;
-function setup(mock: ConstructorParameters<typeof MockPayments>[1] = {}) {
+async function setup(mock: ConstructorParameters<typeof MockPayments>[1] = {}) {
   let now = 1800000000000;
   const store = new Store();
   const clock = () => now;
@@ -29,6 +29,8 @@ function setup(mock: ConstructorParameters<typeof MockPayments>[1] = {}) {
   const recipientSession = auth.demoLogin('recipient');
   const recipient = auth.identity(recipientSession).account;
   const other = auth.identity(auth.demoLogin('other')).account;
+  await service.recipients.onboard(recipient.subject, 'http://localhost');
+  await service.recipients.onboard(other.subject, 'http://localhost');
   return {
     store,
     auth,
@@ -43,7 +45,7 @@ function setup(mock: ConstructorParameters<typeof MockPayments>[1] = {}) {
   };
 }
 test('秘密のリンクから登録前に依頼内容と金額を確認する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const created = await s.links.create('demo-client', key(), input);
     const view = s.links.read(created.token!);
@@ -59,7 +61,7 @@ test('秘密のリンクから登録前に依頼内容と金額を確認する',
   }
 });
 test('最初の受諾者に依頼をひも付けて再試行と納品を許可する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const created = await s.links.create('demo-client', key(), input);
     const operation = key();
@@ -100,7 +102,7 @@ test('最初の受諾者に依頼をひも付けて再試行と納品を許可�
   }
 });
 test('同意と依頼者以外のアカウントを確認して受諾する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const created = await s.links.create('demo-client', key(), input);
     await assert.rejects(
@@ -122,7 +124,7 @@ test('同意と依頼者以外のアカウントを確認して受諾する', as
   }
 });
 test('作成の再試行をまとめ、リンクを再発行して古いリンクを失効する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const operation = key();
     const created = await s.links.create('demo-client', operation, input);
@@ -152,7 +154,7 @@ test('作成の再試行をまとめ、リンクを再発行して古いリン�
   }
 });
 test('登録せずに辞退し、取消・期限切れでも支払確保を解除する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     const declined = await s.links.create('demo-client', key(), input);
     const operation = key();
@@ -179,7 +181,7 @@ test('登録せずに辞退し、取消・期限切れでも支払確保を解�
 });
 
 test('宛先未指定の依頼にも作成件数の制限を適用する', async () => {
-  const s = setup();
+  const s = await setup();
   try {
     for (let i = 0; i < 5; i++) await s.links.create('demo-client', key(), input);
     await assert.rejects(
@@ -253,6 +255,18 @@ test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を�
     );
     const first = await register('link_recipient');
     const other = await register('link_other');
+    for (const cookie of [first, other])
+      assert.equal(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/recipient/onboard',
+            headers: { ...headers, cookie },
+            payload: {},
+          })
+        ).statusCode,
+        200,
+      );
     const operation = key();
     const accept = (cookie: string) =>
       app.inject({

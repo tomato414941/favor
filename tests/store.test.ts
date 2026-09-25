@@ -22,6 +22,7 @@ test('再起動後も依頼・ファイル・操作の再試行・利用者を�
     const sender = auth.actor(auth.demoLogin('client'));
     const session = auth.demoLogin('recipient');
     const recipient = auth.identity(session).account;
+    await requests.recipients.onboard(recipient.subject, 'http://localhost');
     const input = {
       brief: '静かな明け方の物語をお願いします。',
       amount: 12000,

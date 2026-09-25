@@ -155,6 +155,26 @@ def main():
             layout(receiving, 'recipient-registration')
             register(receiving, receiver_email)
             expect(detail).to_contain_text(f'{receiver_email}として受け取ります')
+            expect(detail.get_by_role('button', name='受ける', exact=True)).to_be_disabled()
+            layout(receiving, 'recipient-onboarding')
+            onboarding_calls = []
+
+            def return_from_onboarding(route):
+                result = route.fetch()
+                assert result.status == 200
+                onboarding_calls.append(route.request.post_data_json)
+                action = 'refresh' if len(onboarding_calls) == 1 else 'return'
+                route.fulfill(response=result, json={'url': f'{base}/me/payouts?onboarding={action}'})
+
+            receiving.route('**/api/recipient/onboard', return_from_onboarding)
+            with receiving.expect_navigation(url='**/me/payouts?onboarding=refresh'):
+                detail.get_by_role('button', name='受取先を登録', exact=True).click()
+            expect(detail.get_by_role('checkbox', name='内容・金額・期限を確認しました', exact=True)).to_be_visible()
+            expect(receiving).to_have_url(url)
+            assert onboarding_calls == [{}, {}]
+            assert receiving.evaluate("sessionStorage.getItem('favor.recipient-return')") is None
+            receiving.unroute('**/api/recipient/onboard', return_from_onboarding)
+            expect(detail.get_by_role('heading', name='売上の受け取り')).not_to_be_visible()
             detail.get_by_role('checkbox', name='内容・金額・期限を確認しました', exact=True).check()
 
             def lose_acceptance(route):
@@ -185,6 +205,7 @@ def main():
             ])
             work.get_by_role('button', name='作品を渡す', exact=True).click()
             expect(work).to_contain_text('納品済み')
+            expect(work).to_contain_text('売上をStripeに反映しました')
             expect(work.locator('.delivery-files').get_by_role('link')).to_have_count(2)
             work.get_by_role('button', name='作品を差し替える', exact=True).click()
             latest = '海辺の喫茶店には、星を待つ席があった。'.encode()

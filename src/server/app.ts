@@ -325,6 +325,7 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
       links.expire();
       service.expire();
       await service.payments.reconcile();
+      await service.recipients.reconcile();
     })()
       .catch(() => {
         app.log.error('Expiration failed');
@@ -339,6 +340,13 @@ export async function buildApp(service: RequestService, options: AppOptions = {}
     await reconciliation;
   });
   app.get('/api/session', async (request) => service.session(await actor(request)));
+  app.get('/api/recipient', async (request) => service.recipients.status(await actor(request)));
+  app.post('/api/recipient/onboard', async (request) =>
+    service.recipients.onboard(await actor(request), pageOrigin(request)),
+  );
+  app.post('/api/recipient/dashboard', async (request) =>
+    service.recipients.dashboard(await actor(request)),
+  );
   app.get('/api/requests', async (request) => ({ requests: service.list(await actor(request)) }));
   app.get('/api/works', async () => ({ works: service.publicWorks() }));
   app.get<{ Params: { id: string } }>('/api/works/:id', async (request) =>

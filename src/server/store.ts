@@ -12,14 +12,14 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 6 && (version !== 0 || initialized)) {
+    if (version !== 7 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 6 before starting the application.',
+        'Unsupported database schema. Prepare schema version 7 before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 6) return;
+    if (version === 7) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
@@ -45,6 +45,18 @@ export class Store {
       CREATE TABLE effects (
         request_id TEXT NOT NULL REFERENCES requests(id), operation TEXT NOT NULL,
         created_at INTEGER NOT NULL, PRIMARY KEY (request_id, operation)
+      ) STRICT;
+      CREATE TABLE recipients (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+        provider TEXT NOT NULL, account_id TEXT UNIQUE,
+        state TEXT NOT NULL CHECK (state IN ('unregistered', 'incomplete', 'reviewing', 'ready'))
+      ) STRICT;
+      CREATE TABLE transfers (
+        request_id TEXT PRIMARY KEY REFERENCES requests(id),
+        recipient_id TEXT NOT NULL REFERENCES recipients(id), account_id TEXT NOT NULL,
+        amount INTEGER NOT NULL CHECK (amount > 0),
+        state TEXT NOT NULL CHECK (state IN ('pending', 'transferred')),
+        transfer_id TEXT UNIQUE, checked_at INTEGER NOT NULL DEFAULT 0
       ) STRICT;
       CREATE TABLE commands (
         actor_id TEXT NOT NULL, scope TEXT NOT NULL, key TEXT NOT NULL,
@@ -87,7 +99,7 @@ export class Store {
       CREATE TABLE link_optouts (
         email TEXT PRIMARY KEY, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 6;
+      PRAGMA user_version = 7;
     `),
     );
   }

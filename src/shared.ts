@@ -3,6 +3,10 @@ export type RequestState = 'delivering' | 'accepted' | 'delivered' | 'cancelled'
 export type PaymentState =
   'pending' | 'authorized' | 'capturing' | 'captured' | 'releasing' | 'released';
 export type Role = 'client' | 'creator';
+export type RecipientState = 'unregistered' | 'incomplete' | 'reviewing' | 'ready';
+export interface RecipientView {
+  state: RecipientState;
+}
 
 export type LinkDelivery = 'self' | 'email';
 export interface RequestLinkInput {
@@ -41,6 +45,7 @@ export interface RequestView extends WorkView {
   amount: number;
   cancelledReason: string | null;
   paymentState: PaymentState;
+  transferState: 'pending' | 'transferred' | null;
 }
 export interface SessionView {
   name: string;

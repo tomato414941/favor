@@ -103,6 +103,14 @@ export function RequestDetail({
           支払いを確認しています。確認が済むと、ファイルを相手に渡します。
         </div>
       )}
+      {role === 'creator' && request.paymentState === 'captured' && (
+        <p className="hint">
+          {request.transferState === 'transferred'
+            ? '売上をStripeに反映しました。'
+            : '売上を処理しています。'}{' '}
+          <a href="/me/payouts">受取先を確認</a>
+        </p>
+      )}
       {request.files.length > 0 && (
         <section className="delivery-files">
           <h3>

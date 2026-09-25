@@ -9,8 +9,9 @@ import { Link, navigate } from './ui';
 import { SiteHeader } from './Header';
 import { WorkImages } from './Works';
 import { visibilityLabels } from './format';
+import { RecipientAccount } from './RecipientAccount';
 
-export type Page = 'new' | 'sent' | 'received' | 'works' | 'request' | 'link';
+export type Page = 'new' | 'sent' | 'received' | 'works' | 'request' | 'link' | 'payouts';
 
 export function Workspace({
   page,
@@ -175,7 +176,9 @@ export function Workspace({
               }
             : null)
         }
-        active={page === 'new' ? 'new' : page === 'works' ? 'mine' : side}
+        active={
+          page === 'new' ? 'new' : page === 'works' ? 'mine' : page === 'payouts' ? 'payouts' : side
+        }
         counts={{
           sent: pendingLinks.length + sentRequests.length,
           received: receivedRequests.length,
@@ -212,6 +215,9 @@ export function Workspace({
           </div>
         ) : (
           <>
+            {page === 'payouts' && identity && (
+              <RecipientAccount userId={identity.account.subject} full />
+            )}
             <RequestLinks
               settings={settings}
               mode={page === 'new' ? 'compose' : page === 'link' ? 'detail' : 'hidden'}
