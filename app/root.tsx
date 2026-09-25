@@ -12,7 +12,7 @@ import {
   useRouteLoaderData,
 } from 'react-router';
 import type { Route } from './+types/root';
-import type { IdentitySession } from '../src/shared';
+import type { IdentitySession, PaymentMode } from '../src/shared';
 import { favorOf } from './server/context';
 import { whoami } from './server/session';
 import '@fontsource/noto-sans-jp/400.css';
@@ -65,18 +65,30 @@ export const middleware: Route.MiddlewareFunction[] = [
 export async function loader(args: Route.LoaderArgs) {
   const favor = favorOf(args.context);
   const identity = await whoami(args);
-  const site = { mode: favor.mode, identity };
+  const site = {
+    mode: favor.mode,
+    identity,
+    paymentMode: favor.service.payments.provider.mode,
+    hasPublicProfile: favor.publicProfile !== null,
+  };
   return favor.mode === 'clerk' ? rootAuthLoader(args, () => site) : site;
 }
 
 export interface Site {
   mode: 'clerk' | 'demo';
   identity: IdentitySession | null;
+  paymentMode: PaymentMode;
+  hasPublicProfile: boolean;
 }
 /** The signed-in person and the sign-in mode, as the root loader saw them. */
 export function useSite(): Site {
   const data = useRouteLoaderData<typeof loader>('root');
-  return { mode: data?.mode ?? 'demo', identity: data?.identity ?? null };
+  return {
+    mode: data?.mode ?? 'demo',
+    identity: data?.identity ?? null,
+    paymentMode: data?.paymentMode ?? 'mock',
+    hasPublicProfile: data?.hasPublicProfile ?? false,
+  };
 }
 
 export const meta: Route.MetaFunction = () => [{ title: 'Favor' }];

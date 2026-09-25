@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { useRevalidator } from 'react-router';
+import { Link, useRevalidator } from 'react-router';
+import { useSite } from '../root';
 
 export function ConfirmAction({
   label,
@@ -92,6 +93,7 @@ export function Arrow({ down = false }: { down?: boolean }) {
 }
 
 export function DemoBanner() {
+  if (useSite().paymentMode === 'stripe_live') return null;
   return (
     <div className="demo-banner">
       <span className="demo-mark">試用版</span>実際の支払いは発生しません
@@ -99,9 +101,18 @@ export function DemoBanner() {
   );
 }
 export function Footer() {
+  const { hasPublicProfile } = useSite();
   return (
     <footer className="footer shell">
       <span className="footer-brand">Favor</span>
+      {hasPublicProfile && (
+        <div className="footer-links">
+          <Link to="/terms">利用規約</Link>
+          <Link to="/privacy">プライバシー</Link>
+          <Link to="/legal">特定商取引法に基づく表記</Link>
+          <Link to="/contact">お問い合わせ</Link>
+        </div>
+      )}
     </footer>
   );
 }

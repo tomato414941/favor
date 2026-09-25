@@ -138,6 +138,7 @@ export class RequestLinkService {
       visibility: row.visibility,
       state: row.state,
       paymentState: this.requests.payments.row(row.id).state,
+      settlement: this.requests.payments.settlement(row.id),
       createdAt: row.created_at,
       expiresAt: row.expires_at,
       deliverBy: row.deliver_by,
@@ -331,7 +332,7 @@ export class RequestLinkService {
       if (row.recipient_email && this.optout(row.recipient_email).blocked) {
         throw new DomainError('RECIPIENT_UNAVAILABLE', 'この宛先には送れません。');
       }
-      const margin = this.requests.payments.provider.mode === 'stripe_test' ? 300000 : 0;
+      const margin = this.requests.payments.provider.mode === 'mock' ? 0 : 300000;
       const deliverBy = Math.min(
         row.created_at + this.requests.policy.deliveryMs,
         payment.hold_until - margin,

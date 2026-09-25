@@ -30,5 +30,6 @@ export default [
     route('requests/:id', 'routes/api-request.tsx'),
     route('payments/stripe-webhook', 'routes/api-stripe-webhook.tsx'),
   ]),
+  route(':page', 'routes/information.tsx'),
   route('*', 'routes/missing.tsx'),
 ] satisfies RouteConfig;

@@ -28,7 +28,7 @@ const code = (expected: string) => (error: unknown) =>
   error instanceof DomainError && error.code === expected;
 
 class Cards implements PaymentProvider {
-  readonly mode = 'stripe_test' as const;
+  constructor(readonly mode: 'stripe_test' | 'stripe_live' = 'stripe_test') {}
   readonly signer = new StripePayments('rk_test_fixture', 'whsec_fixture');
   readonly states = new Map<string, CardStatus>();
   starts = 0;
@@ -73,6 +73,9 @@ class Cards implements PaymentProvider {
       this.states.set(payment.link_id, { ...current, state: 'released' });
     }
     return this.states.get(payment.link_id)!;
+  }
+  async adjustments() {
+    return [];
   }
   event(body: Buffer, signature: string) {
     return this.signer.event(body, signature);
@@ -204,7 +207,7 @@ test('支払確定の通信断から再起動後に復旧し、確定を確認�
     assert.equal(delivered.files.length, 1);
     assert.equal(cards.captures, 1);
     assert.equal(delivered.transferState, 'pending');
-    await s.service.recipients.reconcile();
+    await s.service.transfers.reconcile();
     assert.equal(s.service.get(s.sender, id).transferState, 'transferred');
     await s.service.payments.settle(paid.link.id);
     assert.equal(s.service.get(s.sender, id).deliveryVersion, 1);
@@ -229,6 +232,20 @@ test('解除の失敗を手続き中として保存し、再試行で仮押さ�
     assert.equal(s.links.get(s.sender, paid.link.id).paymentState, 'released');
     await s.links.withdraw(s.sender, paid.link.id, key);
     assert.equal(s.cards.releases, 1);
+  } finally {
+    s.store.close();
+  }
+});
+
+test('本番でもカードの仮押さえ期限より5分前に納品期限を設定する', async () => {
+  const s = await setup(undefined, new Cards('stripe_live'));
+  try {
+    const paid = await s.authorize();
+    assert.equal(paid.link.deliverBy, s.now() + 7 * DAY - 300000);
+    s.advance(paid.link.deliverBy - s.now());
+    s.links.expire();
+    await s.service.payments.reconcile();
+    assert.equal(s.links.get(s.sender, paid.link.id).paymentState, 'released');
   } finally {
     s.store.close();
   }

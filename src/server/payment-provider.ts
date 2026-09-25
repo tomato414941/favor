@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { DomainError } from './errors.js';
+import type { PaymentMode } from '../shared.js';
 
 export interface CardPayment {
   link_id: string;
@@ -14,6 +15,15 @@ export interface CardStatus {
   state: 'pending' | 'authorized' | 'captured' | 'released';
   intentId: string | null;
   holdUntil: number;
+  chargeId?: string;
+}
+export interface Adjustment {
+  id: string;
+  kind: 'refund' | 'dispute';
+  amount: number;
+  status: string;
+  reason: string | null;
+  respondBy: number | null;
 }
 export interface Checkout {
   id: string;
@@ -21,39 +31,61 @@ export interface Checkout {
 }
 export interface PaymentEvent {
   id: string;
-  linkId: string;
+  linkId?: string;
+  intentId?: string;
+  chargeId?: string;
+  requestId?: string;
   checkoutId?: string;
 }
 export interface PaymentProvider {
-  readonly mode: 'mock' | 'stripe_test';
+  readonly mode: PaymentMode;
   checkout(payment: CardPayment): Promise<Checkout>;
   inspect(payment: CardPayment): Promise<CardStatus>;
   capture(payment: CardPayment): Promise<CardStatus>;
   release(payment: CardPayment): Promise<CardStatus>;
+  adjustments(payment: CardPayment): Promise<Adjustment[]>;
   event?(body: Buffer, signature: string): PaymentEvent | null;
 }
 
 const mismatch = () => new DomainError('PAYMENT_MISMATCH', '支払いの状態を確認できません。', 502);
 
 export class StripePayments implements PaymentProvider {
-  readonly mode = 'stripe_test' as const;
+  readonly mode: 'stripe_test' | 'stripe_live';
   readonly stripe: Stripe;
   constructor(
     key: string,
     private readonly webhookSecret: string,
     options: Stripe.StripeConfig = {},
+    mode: 'stripe_test' | 'stripe_live' = 'stripe_test',
   ) {
-    if (!/^rk_test_[A-Za-z0-9]+$/.test(key))
-      throw new Error('Stripe payments require a restricted test key.');
+    this.mode = mode;
+    if (!new RegExp(`^rk_${mode === 'stripe_live' ? 'live' : 'test'}_[A-Za-z0-9]+$`).test(key))
+      throw new Error('Stripe restricted key does not match the configured payment mode.');
     if (!/^whsec_[A-Za-z0-9]+$/.test(webhookSecret))
       throw new Error('A Stripe webhook signing secret is required.');
     this.stripe = new Stripe(key, { timeout: 10000, maxNetworkRetries: 1, ...options });
+  }
+  get live() {
+    return this.mode === 'stripe_live';
   }
   async verifyAccount(expected: string) {
     if (!/^acct_[A-Za-z0-9]+$/.test(expected)) throw new Error('STRIPE_ACCOUNT_ID is required.');
     const account = await this.stripe.accounts.retrieveCurrent();
     if (account.id !== expected)
       throw new Error('Stripe account does not match STRIPE_ACCOUNT_ID.');
+    if (this.live && (!account.charges_enabled || !account.payouts_enabled))
+      throw new Error('The live Stripe account is not ready to accept payments and payouts.');
+    await Promise.all([
+      this.stripe.refunds.list({ limit: 1 }).catch(() => {
+        throw new Error('Stripe refund read access could not be verified.');
+      }),
+      this.stripe.disputes.list({ limit: 1 }).catch(() => {
+        throw new Error('Stripe dispute read access could not be verified.');
+      }),
+      this.stripe.transfers.list({ limit: 1 }).catch(() => {
+        throw new Error('Stripe transfer read access could not be verified.');
+      }),
+    ]);
   }
   async checkout(payment: CardPayment): Promise<Checkout> {
     const session = await this.stripe.checkout.sessions.create(
@@ -89,7 +121,7 @@ export class StripePayments implements PaymentProvider {
   }
   private checkSession(session: Stripe.Checkout.Session, payment: CardPayment) {
     if (
-      session.livemode ||
+      session.livemode !== this.live ||
       session.metadata?.favor_link_id !== payment.link_id ||
       session.amount_total !== payment.amount ||
       session.currency !== 'jpy' ||
@@ -99,7 +131,7 @@ export class StripePayments implements PaymentProvider {
   }
   private status(intent: Stripe.PaymentIntent, payment: CardPayment): CardStatus {
     if (
-      intent.livemode ||
+      intent.livemode !== this.live ||
       intent.metadata.favor_link_id !== payment.link_id ||
       intent.amount !== payment.amount ||
       intent.currency !== 'jpy' ||
@@ -111,7 +143,9 @@ export class StripePayments implements PaymentProvider {
       return { state: 'released', intentId: intent.id, holdUntil: 0 };
     if (intent.status === 'succeeded') {
       if (intent.amount_received !== payment.amount) throw mismatch();
-      return { state: 'captured', intentId: intent.id, holdUntil: payment.hold_until };
+      const chargeId = objectId(intent.latest_charge);
+      if (!chargeId) throw mismatch();
+      return { state: 'captured', intentId: intent.id, holdUntil: payment.hold_until, chargeId };
     }
     if (intent.status !== 'requires_capture')
       return { state: 'pending', intentId: intent.id, holdUntil: 0 };
@@ -120,6 +154,49 @@ export class StripePayments implements PaymentProvider {
       typeof charge === 'object' && charge?.payment_method_details?.card?.capture_before;
     if (intent.amount_capturable !== payment.amount || !before) throw mismatch();
     return { state: 'authorized', intentId: intent.id, holdUntil: before * 1000 };
+  }
+  async adjustments(payment: CardPayment): Promise<Adjustment[]> {
+    if (!payment.intent_id) throw mismatch();
+    const result: Adjustment[] = [];
+    for await (const refund of this.stripe.refunds.list({
+      payment_intent: payment.intent_id,
+      limit: 100,
+    })) {
+      if (
+        objectId(refund.payment_intent) !== payment.intent_id ||
+        refund.currency !== 'jpy' ||
+        !refund.status
+      )
+        throw mismatch();
+      result.push({
+        id: refund.id,
+        kind: 'refund',
+        amount: refund.amount,
+        status: refund.status,
+        reason: refund.failure_reason ?? null,
+        respondBy: null,
+      });
+    }
+    for await (const dispute of this.stripe.disputes.list({
+      payment_intent: payment.intent_id,
+      limit: 100,
+    })) {
+      if (
+        objectId(dispute.payment_intent) !== payment.intent_id ||
+        dispute.currency !== 'jpy' ||
+        dispute.livemode !== this.live
+      )
+        throw mismatch();
+      result.push({
+        id: dispute.id,
+        kind: 'dispute',
+        amount: dispute.amount,
+        status: dispute.status,
+        reason: dispute.reason,
+        respondBy: dispute.evidence_details.due_by ? dispute.evidence_details.due_by * 1000 : null,
+      });
+    }
+    return result;
   }
   async inspect(payment: CardPayment): Promise<CardStatus> {
     if (!payment.checkout_id) throw mismatch();
@@ -181,7 +258,7 @@ export class StripePayments implements PaymentProvider {
     } catch {
       throw new DomainError('INVALID_SIGNATURE', '決済通知を確認できません。', 400);
     }
-    if (event.livemode || event.account)
+    if (event.livemode !== this.live || event.account)
       throw new DomainError('INVALID_EVENT', '決済通知を確認できません。', 400);
     const object = event.data.object;
     if (
@@ -203,6 +280,28 @@ export class StripePayments implements PaymentProvider {
       const linkId = object.metadata.favor_link_id;
       return linkId ? { id: event.id, linkId } : null;
     }
+    if (
+      object.object === 'refund' &&
+      ['refund.created', 'refund.updated', 'refund.failed'].includes(event.type)
+    )
+      return {
+        id: event.id,
+        intentId: objectId(object.payment_intent),
+        chargeId: objectId(object.charge),
+      };
+    if (object.object === 'dispute' && event.type.startsWith('charge.dispute.'))
+      return {
+        id: event.id,
+        intentId: objectId(object.payment_intent),
+        chargeId: objectId(object.charge),
+      };
+    if (object.object === 'charge' && event.type === 'charge.refunded')
+      return { id: event.id, intentId: objectId(object.payment_intent), chargeId: object.id };
+    if (
+      object.object === 'transfer' &&
+      ['transfer.created', 'transfer.updated', 'transfer.reversed'].includes(event.type)
+    )
+      return { id: event.id, requestId: object.metadata.favor_request_id };
     return null;
   }
 }
@@ -234,4 +333,11 @@ export class MockPayments implements PaymentProvider {
   async release(payment: CardPayment): Promise<CardStatus> {
     return { state: 'released', intentId: payment.intent_id, holdUntil: 0 };
   }
+  async adjustments(): Promise<Adjustment[]> {
+    return [];
+  }
+}
+
+function objectId(value: string | { id: string } | null): string | undefined {
+  return typeof value === 'string' ? value : value?.id;
 }

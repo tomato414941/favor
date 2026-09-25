@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { dirname } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { settlementTables } from './settlement-schema.js';
 
 export class Store {
   readonly db: DatabaseSync;
@@ -12,14 +13,14 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 9 && (version !== 0 || initialized)) {
+    if (version !== 10 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 9 before starting the application.',
+        'Unsupported database schema. Run the offline migration before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 9) return;
+    if (version === 10) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
@@ -39,7 +40,7 @@ export class Store {
         request_id TEXT UNIQUE REFERENCES requests(id), provider TEXT NOT NULL,
         state TEXT NOT NULL CHECK (state IN ('pending', 'authorized', 'capturing', 'captured', 'releasing', 'released')),
         amount INTEGER NOT NULL, hold_until INTEGER NOT NULL DEFAULT 0,
-        checkout_id TEXT UNIQUE, checkout_url TEXT, intent_id TEXT UNIQUE,
+        checkout_id TEXT UNIQUE, checkout_url TEXT, intent_id TEXT UNIQUE, charge_id TEXT,
         checkout_expires_at INTEGER NOT NULL, origin TEXT NOT NULL,
         checked_at INTEGER NOT NULL DEFAULT 0
       ) STRICT;
@@ -51,13 +52,6 @@ export class Store {
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
         provider TEXT NOT NULL, account_id TEXT UNIQUE,
         state TEXT NOT NULL CHECK (state IN ('unregistered', 'incomplete', 'reviewing', 'ready'))
-      ) STRICT;
-      CREATE TABLE transfers (
-        request_id TEXT PRIMARY KEY REFERENCES requests(id),
-        recipient_id TEXT NOT NULL REFERENCES recipients(id), account_id TEXT NOT NULL,
-        amount INTEGER NOT NULL CHECK (amount > 0),
-        state TEXT NOT NULL CHECK (state IN ('pending', 'transferred')),
-        transfer_id TEXT UNIQUE, checked_at INTEGER NOT NULL DEFAULT 0
       ) STRICT;
       CREATE TABLE commands (
         actor_id TEXT NOT NULL, scope TEXT NOT NULL, key TEXT NOT NULL,
@@ -101,9 +95,37 @@ export class Store {
       CREATE TABLE link_optouts (
         email TEXT PRIMARY KEY, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 9;
+      ${settlementTables}
+      PRAGMA user_version = 10;
     `),
     );
+  }
+  bindInstance(paymentMode: string, stripeAccount: string, authKey: string) {
+    this.transaction(() => {
+      const row = this.db.prepare('SELECT * FROM instance WHERE id = 1').get();
+      if (row) {
+        if (
+          row.payment_mode !== paymentMode ||
+          row.stripe_account !== stripeAccount ||
+          row.auth_key !== authKey
+        )
+          throw new Error(
+            'This database belongs to a different payment or authentication environment.',
+          );
+        return;
+      }
+      if (paymentMode === 'stripe_live' && this.db.prepare('SELECT 1 FROM users LIMIT 1').get())
+        throw new Error('Live payments require a new database on first startup.');
+      const foreign = this.db
+        .prepare(
+          'SELECT 1 FROM payments WHERE provider != ? UNION ALL SELECT 1 FROM recipients WHERE provider != ? LIMIT 1',
+        )
+        .get(paymentMode, paymentMode);
+      if (foreign) throw new Error('Use a separate database for this payment environment.');
+      this.db
+        .prepare('INSERT INTO instance VALUES (1, ?, ?, ?)')
+        .run(paymentMode, stripeAccount, authKey);
+    });
   }
   transaction<T>(run: () => T): T {
     const depth = this.transactionDepth;

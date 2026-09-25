@@ -158,7 +158,7 @@ export default function LinkLanding({ loaderData }: Route.ComponentProps) {
 
 function Reader({ loaderData }: { loaderData: Landing }) {
   const { identity, account, token, link, failure } = loaderData;
-  const { mode } = useSite();
+  const { mode, hasPublicProfile } = useSite();
   const fetcher = useFetcher<Outcome>();
   const logout = useFetcher();
   const navigation = useNavigation();
@@ -277,6 +277,13 @@ function Reader({ loaderData }: { loaderData: Landing }) {
                     />
                     <span>内容・金額・期限を確認しました</span>
                   </label>
+                  {hasPublicProfile && (
+                    <p className="hint">
+                      <Link to="/terms" target="_blank" rel="noreferrer">
+                        利用規約
+                      </Link>
+                    </p>
+                  )}
                   <button
                     className="primary"
                     disabled={busy || !agreed || account?.state !== 'ready'}

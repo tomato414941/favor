@@ -4,6 +4,24 @@ export type PaymentState =
   'pending' | 'authorized' | 'capturing' | 'captured' | 'releasing' | 'released';
 export type Role = 'client' | 'creator';
 export const PLATFORM_FEE_PERCENT = 8;
+export type PaymentMode = 'mock' | 'stripe_test' | 'stripe_live';
+export type TransferState = 'pending' | 'transferred' | 'held' | 'recovery_pending' | 'recovered';
+export interface SettlementView {
+  refunded: number;
+  refundPending: number;
+  refundFailed: number;
+  dispute: 'none' | 'open' | 'won' | 'lost';
+  disputedAmount: number;
+}
+/** Apportion adjustments against the original net amount, rounding the cumulative total once. */
+export function recipientEntitlement(
+  amount: number,
+  recipientAmount: number,
+  settlement: SettlementView,
+) {
+  const remaining = Math.max(0, amount - settlement.refunded - settlement.disputedAmount);
+  return Number((BigInt(recipientAmount) * BigInt(remaining)) / BigInt(amount));
+}
 export type RecipientState = 'unregistered' | 'incomplete' | 'reviewing' | 'ready';
 export interface RecipientView {
   state: RecipientState;
@@ -48,7 +66,8 @@ export interface RequestView extends WorkView {
   recipientAmount: number;
   cancelledReason: string | null;
   paymentState: PaymentState;
-  transferState: 'pending' | 'transferred' | null;
+  transferState: TransferState | null;
+  settlement: SettlementView;
 }
 export interface SessionView {
   name: string;
@@ -90,6 +109,7 @@ export interface RequestLinkView {
   visibility: Visibility;
   state: RequestLinkState;
   paymentState: PaymentState;
+  settlement: SettlementView;
   createdAt: number;
   expiresAt: number;
   deliverBy: number;

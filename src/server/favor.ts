@@ -12,6 +12,7 @@ import {
 import { DomainError } from './errors.js';
 import { StripePayments } from './payment-provider.js';
 import { parsePublicOrigin } from './public-origin.js';
+import { publicProfile, type PublicProfile } from './public-profile.js';
 import { RequestLinkService } from './request-links.js';
 import { RequestService } from './service.js';
 import { Store } from './store.js';
@@ -26,6 +27,7 @@ export interface FavorConfig {
   auth: 'demo' | ClerkKeys;
   mail?: EmailDelivery;
   publicOrigin?: string;
+  publicProfile?: PublicProfile;
   trustLoopbackProxy?: boolean;
   log?: (message: string) => void;
 }
@@ -40,6 +42,7 @@ export class Favor {
   readonly mode: 'clerk' | 'demo';
   readonly clerk: ClerkKeys | null;
   readonly origin: URL | null;
+  readonly publicProfile: PublicProfile | null;
   readonly sessionCookieName: string;
   readonly trustLoopbackProxy: boolean;
   readonly log: (message: string) => void;
@@ -52,6 +55,18 @@ export class Favor {
     this.origin = config.publicOrigin === undefined ? null : parsePublicOrigin(config.publicOrigin);
     this.mode = config.auth === 'demo' ? 'demo' : 'clerk';
     this.clerk = config.auth === 'demo' ? null : config.auth;
+    this.publicProfile = config.publicProfile ? publicProfile(config.publicProfile) : null;
+    if (
+      this.service.payments.provider.mode === 'stripe_live' &&
+      (!this.publicProfile ||
+        this.origin?.protocol !== 'https:' ||
+        !this.clerk?.publishableKey.startsWith('pk_live_') ||
+        !this.clerk.secretKey.startsWith('sk_live_') ||
+        this.service.recipients.provider.mode !== 'stripe_live')
+    )
+      throw new Error(
+        'Live payments require HTTPS, live Clerk keys, and complete public business information.',
+      );
     if (this.mode === 'demo' && this.origin && !isLoopback(this.origin.hostname))
       throw new Error('Demo authentication is allowed only on loopback.');
     if (config.trustLoopbackProxy && !this.origin)
@@ -121,7 +136,7 @@ export class Favor {
         this.links.expire();
         this.service.expire();
         await this.service.payments.reconcile();
-        await this.service.recipients.reconcile();
+        await this.service.transfers.reconcile();
       })()
         .catch(() => this.log('Expiration failed'))
         .finally(() => {
@@ -146,6 +161,33 @@ export async function configFromEnv(env: Record<string, string | undefined>): Pr
   if (!['clerk', 'demo'].includes(authMode))
     throw new Error('FAVOR_AUTH_MODE must be clerk or demo.');
   const publicOrigin = env.FAVOR_PUBLIC_ORIGIN;
+  const profile = env.FAVOR_PUBLIC_PROFILE
+    ? publicProfile(JSON.parse(env.FAVOR_PUBLIC_PROFILE))
+    : undefined;
+  const paymentMode = env.FAVOR_PAYMENT_MODE ?? 'mock';
+  if (paymentMode !== 'mock' && paymentMode !== 'stripe_test' && paymentMode !== 'stripe_live')
+    throw new Error('FAVOR_PAYMENT_MODE must be mock, stripe_test, or stripe_live.');
+  const auth =
+    authMode === 'demo'
+      ? ('demo' as const)
+      : {
+          secretKey: env.CLERK_SECRET_KEY ?? '',
+          publishableKey: env.CLERK_PUBLISHABLE_KEY ?? '',
+        };
+  if (
+    paymentMode === 'stripe_live' &&
+    (!env.FAVOR_DATA_DIR ||
+      !publicOrigin ||
+      parsePublicOrigin(publicOrigin).protocol !== 'https:' ||
+      !profile ||
+      auth === 'demo' ||
+      !auth.publishableKey.startsWith('pk_live_') ||
+      !auth.secretKey.startsWith('sk_live_') ||
+      env.FAVOR_TEST_MAIL_DOMAIN)
+  )
+    throw new Error(
+      'Live payments require a dedicated data directory, HTTPS, live Clerk keys, public business information, and real email delivery.',
+    );
   const trustProxy = env.FAVOR_TRUST_PROXY ?? 'none';
   if (!['none', 'loopback'].includes(trustProxy))
     throw new Error('FAVOR_TRUST_PROXY must be none or loopback.');
@@ -169,35 +211,44 @@ export async function configFromEnv(env: Record<string, string | undefined>): Pr
   const mail = testMailDomain
     ? testDomainDelivery(testMailDomain, fileDelivery(resolve(directory, 'mail')), providerDelivery)
     : providerDelivery;
-  const paymentMode = env.FAVOR_PAYMENT_MODE ?? 'mock';
-  if (!['mock', 'stripe_test'].includes(paymentMode))
-    throw new Error('FAVOR_PAYMENT_MODE must be mock or stripe_test.');
   if (paymentMode === 'mock' && publicHost)
-    throw new Error('Public deployments require Stripe test payments.');
+    throw new Error('Public deployments require Stripe payments.');
+  if (paymentMode === 'stripe_live' && delivery !== 'resend')
+    throw new Error('Live payments require real email delivery.');
   const payments =
-    paymentMode === 'stripe_test'
-      ? new StripePayments(env.STRIPE_API_KEY ?? '', env.STRIPE_WEBHOOK_SECRET ?? '')
+    paymentMode !== 'mock'
+      ? new StripePayments(
+          env.STRIPE_API_KEY ?? '',
+          env.STRIPE_WEBHOOK_SECRET ?? '',
+          {},
+          paymentMode,
+        )
       : undefined;
   if (payments) await payments.verifyAccount(env.STRIPE_ACCOUNT_ID ?? '');
   const store = new Store(resolve(directory, 'app.sqlite'));
+  try {
+    store.bindInstance(
+      paymentMode,
+      payments ? env.STRIPE_ACCOUNT_ID! : '',
+      auth === 'demo' ? 'demo' : auth.publishableKey,
+    );
+  } catch (error) {
+    store.close();
+    throw error;
+  }
   const service = new RequestService(
     store,
     Date.now,
     {},
     payments,
-    payments ? new StripeConnect(payments.stripe) : undefined,
+    payments ? new StripeConnect(payments.stripe, payments.mode) : undefined,
   );
   return {
     service,
-    auth:
-      authMode === 'demo'
-        ? 'demo'
-        : {
-            secretKey: env.CLERK_SECRET_KEY ?? '',
-            publishableKey: env.CLERK_PUBLISHABLE_KEY ?? '',
-          },
+    auth,
     mail,
     ...(publicOrigin === undefined ? {} : { publicOrigin }),
+    ...(profile ? { publicProfile: profile } : {}),
     trustLoopbackProxy: trustProxy === 'loopback',
     log: (message) => console.error(message),
   };

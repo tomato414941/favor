@@ -17,6 +17,7 @@ import { Payments, type PaymentRow } from './payments.js';
 import { MockPayments, type PaymentProvider } from './payment-provider.js';
 import { MockConnect, type ConnectProvider } from './connect-provider.js';
 import { Recipients } from './recipients.js';
+import { Transfers } from './transfers.js';
 export { DomainError } from './errors.js';
 
 const DAY = 86_400_000;
@@ -75,6 +76,7 @@ export class RequestService {
   readonly policy: Policy;
   readonly payments: Payments;
   readonly recipients: Recipients;
+  readonly transfers: Transfers;
   constructor(
     readonly store: Store,
     readonly clock: () => number = Date.now,
@@ -89,6 +91,7 @@ export class RequestService {
       clock,
     );
     this.recipients = new Recipients(store, connect, clock);
+    this.transfers = new Transfers(store, connect, this.payments, clock);
   }
   private one<T>(sql: string, ...params: SQLInputValue[]): T | undefined {
     return this.store.db.prepare(sql).get(...params) as unknown as T | undefined;
@@ -183,8 +186,9 @@ export class RequestService {
       platformFee: row.platform_fee,
       recipientAmount: row.amount - row.platform_fee,
       paymentState: this.payment(row.id).state,
+      settlement: this.payments.settlement(this.payment(row.id).link_id),
       transferState:
-        this.one<{ state: 'pending' | 'transferred' }>(
+        this.one<{ state: RequestView['transferState'] }>(
           'SELECT state FROM transfers WHERE request_id = ?',
           row.id,
         )?.state ?? null,
@@ -426,7 +430,7 @@ export class RequestService {
     });
     await this.payments.settle(this.payment(id).link_id);
     try {
-      await this.recipients.settle(id);
+      await this.transfers.settle(id);
     } catch {
       /* Capture succeeded; retry the saved transfer without charging again. */
     }

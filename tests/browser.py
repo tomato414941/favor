@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import secrets
+import sqlite3
 from urllib.parse import parse_qs
 import sys
 import tempfile
@@ -374,6 +375,30 @@ def main():
             layout(receiving, 'cancelled')
             page.get_by_role('navigation').get_by_role('link', name=re.compile('^送った依頼')).click()
             layout(page, 'sent-list-many')
+            # Provider reconciliation is covered by settlement.test.ts. Seed its saved results
+            # in this invocation's disposable database to verify the actual detail screens.
+            completed = next(item for item in sender.request.get(f'{base}/api/requests').json()['requests'] if item['state'] == 'delivered')
+            request_id = completed['id']
+            with sqlite3.connect(os.environ['FAVOR_TEST_DB_PATH']) as db:
+                link_id = db.execute('SELECT link_id FROM payments WHERE request_id = ?', (request_id,)).fetchone()[0]
+                db.execute('INSERT INTO adjustments VALUES (?, ?, ?, ?, ?, ?, ?, ?)', ('re_browser', link_id, 'refund', 1000, 'succeeded', None, None, 1))
+                db.execute("UPDATE transfers SET net_amount = 10120, state = 'transferred' WHERE request_id = ?", (request_id,))
+            receiving.goto(f'{base}/me/requests/{request_id}')
+            expect(receiving.locator('.detail-facts')).to_contain_text('一部返金済み')
+            expect(receiving.locator('.detail-facts')).to_contain_text('調整後の受取額')
+            expect(receiving.locator('.detail-facts')).to_contain_text('¥10,120')
+            layout(receiving, 'partial-refund')
+            with sqlite3.connect(os.environ['FAVOR_TEST_DB_PATH']) as db:
+                db.execute("UPDATE adjustments SET amount = 12000 WHERE id = 're_browser'")
+                db.execute("UPDATE transfers SET state = 'recovery_pending', retry_at = 9999999999999 WHERE request_id = ?", (request_id,))
+            receiving.reload()
+            expect(receiving.locator('.detail-facts')).to_contain_text('カード · 返金済み')
+            expect(receiving.get_by_text('取消分の売上を調整しています。', exact=False)).to_be_visible()
+            layout(receiving, 'refund-recovery')
+            for path, title in [('legal', '特定商取引法に基づく表記'), ('contact', 'お問い合わせ'), ('terms', '利用規約'), ('privacy', 'プライバシーポリシー')]:
+                visiting.goto(f'{base}/{path}')
+                expect(visiting.get_by_role('heading', name=title, exact=True)).to_be_visible()
+                layout(visiting, path)
             for request in observed:
                 assert all(token not in request.url for token in tokens), request.url
                 assert all(token not in request.headers.get('referer', '') for token in tokens)

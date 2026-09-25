@@ -294,6 +294,43 @@ nav + .account-menu {
   letter-spacing: -0.035em;
   color: var(--muted);
 }
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+}
+.information-page {
+  max-width: 720px;
+  padding-block: 48px 72px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.information-page h1 {
+  font-size: 24px;
+  margin-bottom: 32px;
+}
+.information-page h2 {
+  font-size: 16px;
+  margin-top: 32px;
+}
+.information-page p {
+  font-size: 14px;
+  margin-block: 16px;
+}
+.business-facts {
+  font-size: 14px;
+}
+.business-facts > div {
+  padding-block: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.business-facts dt {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.business-facts dd {
+  margin: 0;
+}
 .workspace {
   flex: 1;
   display: flex;

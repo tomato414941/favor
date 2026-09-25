@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useFetcher } from 'react-router';
-import { paymentLabels, requestLabels, type RequestView, type Role } from '../../src/shared';
+import { requestLabels, type RequestView, type Role } from '../../src/shared';
+import { PaymentFacts } from './PaymentFacts';
 import { AmountFacts } from './AmountFacts';
 import { Arrow, ConfirmAction, useOperationKey, type ActionFailure } from './ui';
 import { date, number, visibilityLabels } from './format';
@@ -85,10 +86,11 @@ export function RequestDetail({
           <dt>納品期限</dt>
           <dd>{date(request.deliverBy)}</dd>
         </div>
-        <div>
-          <dt>支払い</dt>
-          <dd>カード · {paymentLabels[request.paymentState]}</dd>
-        </div>
+        <PaymentFacts
+          state={request.paymentState}
+          amount={request.amount}
+          settlement={request.settlement}
+        />
       </dl>
       {request.state === 'cancelled' && (
         <div className="cancellation-note">
@@ -108,9 +110,15 @@ export function RequestDetail({
       )}
       {role === 'creator' && request.paymentState === 'captured' && (
         <p className="hint">
-          {request.transferState === 'transferred'
-            ? '売上をStripeに反映しました。'
-            : '売上を処理しています。'}{' '}
+          {request.transferState === 'held'
+            ? '売上の送金を保留しています。'
+            : request.transferState === 'recovery_pending'
+              ? '取消分の売上を調整しています。'
+              : request.transferState === 'recovered'
+                ? '売上を取り消しました。'
+                : request.transferState === 'transferred'
+                  ? '売上をStripeに反映しました。'
+                  : '売上を処理しています。'}{' '}
           <Link to="/me/settings">受取先を確認</Link>
         </p>
       )}

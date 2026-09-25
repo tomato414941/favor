@@ -1,4 +1,5 @@
-import { paymentLabels, type RequestLinkView } from '../../src/shared';
+import type { RequestLinkView } from '../../src/shared';
+import { PaymentFacts } from './PaymentFacts';
 import { AmountFacts } from './AmountFacts';
 import { date, visibilityLabels } from './format';
 
@@ -36,10 +37,7 @@ export function LinkFacts({
             </div>
           </>
         )}
-        <div>
-          <dt>支払い</dt>
-          <dd>カード · {paymentLabels[link.paymentState]}</dd>
-        </div>
+        <PaymentFacts state={link.paymentState} amount={link.amount} settlement={link.settlement} />
       </dl>
     </>
   );

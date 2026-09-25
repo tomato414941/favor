@@ -4,11 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
 import { AuthService } from '../src/server/auth.js';
 import {
   StripeConnect,
-  type ConnectProvider,
+  MockConnect,
+  TransferRejected,
   type Recipient,
   type Transfer,
 } from '../src/server/connect-provider.js';
@@ -28,11 +29,11 @@ const files = [{ name: 'art.txt', content: Buffer.from('完成した作品').toS
 const code = (expected: string) => (error: unknown) =>
   error instanceof DomainError && error.code === expected;
 
-class Connect implements ConnectProvider {
+class Connect extends MockConnect {
   readonly mode = 'mock' as const;
   readonly accounts = new Map<string, string>();
   readonly states = new Map<string, RecipientState>();
-  readonly transfers = new Map<string, Transfer>();
+  readonly sent = new Map<string, Transfer>();
   readonly emails: string[] = [];
   readonly origins: string[] = [];
   readonly dashboards: string[] = [];
@@ -61,13 +62,13 @@ class Connect implements ConnectProvider {
     return `https://connect.stripe.com/express/${recipient.account_id}`;
   }
   async transfer(transfer: Transfer) {
-    if (!this.transfers.has(transfer.request_id))
-      this.transfers.set(transfer.request_id, { ...transfer });
+    const id = await super.transfer(transfer);
+    if (!this.sent.has(transfer.request_id)) this.sent.set(transfer.request_id, { ...transfer });
     if (this.loseTransfer) {
       this.loseTransfer = false;
       throw new Error('transfer response lost');
     }
-    return `tr_${transfer.request_id}`;
+    return id;
   }
 }
 function setup(path?: string, connect = new Connect()) {
@@ -133,7 +134,7 @@ test('Stripeの受取可能状態を受諾時と初回納品時に確認する',
       files,
     );
     assert.equal(delivered.transferState, 'transferred');
-    const transfer = s.connect.transfers.get(delivered.id)!;
+    const transfer = s.connect.sent.get(delivered.id)!;
     assert.equal(transfer.account_id, account);
     assert.equal(transfer.amount, 11040);
     assert.equal(transfer.payment_amount, input.amount);
@@ -186,11 +187,11 @@ test('送金の通信断でも納品を保存し、再起動後に同じ相手�
     s.store.close();
     s = setup(path, connect);
     s.advance(2 * 86400000);
-    await Promise.all([s.service.recipients.reconcile(), s.service.recipients.settle(id!)]);
+    await Promise.all([s.service.transfers.reconcile(), s.service.transfers.settle(id!)]);
     assert.equal(s.service.get(s.recipient.subject, id!).transferState, 'transferred');
     await s.service.deliver(s.recipient.subject, id!, randomUUID(), files);
-    assert.equal(connect.transfers.size, 1);
-    assert.equal(connect.transfers.get(id!)!.amount, 11040);
+    assert.equal(connect.sent.size, 1);
+    assert.equal(connect.sent.get(id!)!.amount, 11040);
     assert.equal(s.service.get(s.recipient.subject, id!).recipientAmount, 11040);
     assert.equal(
       s.store.db
@@ -274,11 +275,11 @@ test('ログイン中の本人のメールと受取先だけを使い、登録�
   }
 });
 
-function stripeFixture() {
+function stripeFixture(live = false) {
   const recipient = { id: 'registration', account_id: 'acct_recipient' };
   const account = {
     id: recipient.account_id,
-    livemode: false,
+    livemode: live,
     dashboard: 'express',
     identity: { country: 'JP' },
     defaults: {
@@ -302,8 +303,9 @@ function stripeFixture() {
   };
   let sourceTransaction: string | undefined;
   const sent: Stripe.Transfer[] = [];
+  const reversals: Stripe.TransferReversal[] = [];
   const intent = {
-    livemode: false,
+    livemode: live,
     status: 'succeeded',
     currency: 'jpy',
     amount_received: 12000,
@@ -339,18 +341,37 @@ function stripeFixture() {
       retrieve: async () => structuredClone(intent),
     },
     transfers: {
-      list: async () => ({ data: structuredClone(sent), has_more: false }),
+      list: async function* () {
+        yield* structuredClone(sent);
+      },
       create: async (params: Stripe.TransferCreateParams) => {
         sourceTransaction = params.source_transaction;
         const result = {
-          id: 'tr_confirmed',
-          livemode: false,
+          id: sent.length ? `tr_restored_${sent.length}` : 'tr_confirmed',
+          livemode: live,
           ...params,
           reversed: false,
           amount_reversed: 0,
         } as Stripe.Transfer;
         sent.push(result);
         return result;
+      },
+      listReversals: async function* (id: string) {
+        yield* structuredClone(reversals.filter((item) => item.transfer === id));
+      },
+      createReversal: async (id: string, params: Stripe.TransferCreateReversalParams) => {
+        const transfer = sent.find((item) => item.id === id)!;
+        const amount = params.amount!;
+        assert.ok(transfer.amount_reversed + amount <= transfer.amount);
+        transfer.amount_reversed += amount;
+        const reversal = {
+          id: `trr_${reversals.length}`,
+          transfer: id,
+          amount,
+          metadata: params.metadata,
+        } as Stripe.TransferReversal;
+        reversals.push(reversal);
+        return structuredClone(reversal);
       },
     },
   } as unknown as Stripe;
@@ -360,7 +381,9 @@ function stripeFixture() {
     intent,
     payouts,
     sent,
-    provider: new StripeConnect(stripe),
+    reversals,
+    stripe,
+    provider: new StripeConnect(stripe, live ? 'stripe_live' : 'stripe_test'),
     sourceTransaction: () => sourceTransaction,
   };
 }
@@ -404,6 +427,7 @@ test('毎週金曜日の自動振込と留保額ゼロを照合して受取可�
 test('納品の決済を送金元に指定し、再試行ではStripe上の送金先と金額を照合する', async () => {
   const s = stripeFixture();
   const transfer = {
+    operation_id: 'operation',
     request_id: 'request',
     link_id: 'link',
     account_id: s.recipient.account_id,
@@ -431,6 +455,7 @@ test('納品の決済を送金元に指定し、再試行ではStripe上の送�
 test('依頼の全額が決済済みであることを照合して利用料を引いた額を送金する', async () => {
   const s = stripeFixture();
   const transfer = {
+    operation_id: 'operation',
     request_id: 'request',
     link_id: 'link',
     account_id: s.recipient.account_id,
@@ -442,9 +467,6 @@ test('依頼の全額が決済済みであることを照合して利用料を�
   s.intent.amount_received = 11040;
   await assert.rejects(s.provider.transfer(transfer), code('CONNECT_MISMATCH'));
   s.intent.amount_received = 12000;
-  s.intent.latest_charge.amount_refunded = 1;
-  await assert.rejects(s.provider.transfer(transfer), code('CONNECT_MISMATCH'));
-  s.intent.latest_charge.amount_refunded = 0;
   assert.equal(await s.provider.transfer(transfer), 'tr_confirmed');
   assert.equal(s.sent[0]!.amount, 11040);
 });
@@ -455,4 +477,80 @@ test('作成済みの受取人をStripeから検索して同じ登録を復元�
     await s.provider.create({ id: s.recipient.id, account_id: null }, 'maker@example.test'),
     s.recipient.account_id,
   );
+});
+
+test('Stripeの送金取消を照合して再試行し、売上を戻すときは新しい送金を作成する', async () => {
+  for (const live of [false, true]) {
+    const s = stripeFixture(live);
+    const transfer: Transfer = {
+      operation_id: 'initial',
+      request_id: 'request',
+      link_id: 'link',
+      account_id: s.recipient.account_id,
+      recipient_id: s.recipient.id,
+      amount: 11040,
+      payment_amount: 12000,
+      intent_id: 'pi_paid',
+    };
+    const id = await s.provider.transfer(transfer);
+    const reversal = { ...transfer, operation_id: 'refund', transfer_id: id, amount: 5520 };
+    const reversed = await s.provider.reverse(reversal);
+    assert.equal(await s.provider.reverse(reversal), reversed);
+    assert.equal(s.reversals.length, 1);
+    assert.equal((await s.provider.transfers(transfer))[0]!.reversedAmount, 5520);
+    assert.equal(
+      await s.provider.findOperation(transfer, {
+        id: 'refund',
+        kind: 'reversal',
+        amount: 5520,
+        source_id: id,
+      }),
+      reversed,
+    );
+    await assert.rejects(
+      s.provider.reverse({ ...reversal, amount: 11040 }),
+      code('CONNECT_MISMATCH'),
+    );
+    const restored = await s.provider.transfer({
+      ...transfer,
+      amount: 5520,
+      operation_id: 'restore',
+    });
+    assert.notEqual(restored, id);
+    assert.equal(s.sourceTransaction(), undefined);
+    assert.equal(
+      await s.provider.findOperation(transfer, {
+        id: 'restore',
+        kind: 'transfer',
+        amount: 5520,
+        source_id: null,
+      }),
+      restored,
+    );
+    assert.equal(
+      s.sent.reduce((sum, item) => sum + item.amount - item.amount_reversed, 0),
+      11040,
+    );
+  }
+});
+
+test('Stripeが残高不足で拒否した送金を、応答不明の送金と区別する', async (t) => {
+  const s = stripeFixture();
+  const transfer: Transfer = {
+    operation_id: 'initial',
+    request_id: 'request',
+    link_id: 'link',
+    account_id: s.recipient.account_id,
+    recipient_id: s.recipient.id,
+    amount: 11040,
+    payment_amount: 12000,
+    intent_id: 'pi_paid',
+  };
+  t.mock.method(s.stripe.transfers, 'create', async () => {
+    throw new Stripe.errors.StripeInvalidRequestError({
+      type: 'invalid_request_error',
+      code: 'balance_insufficient',
+    });
+  });
+  await assert.rejects(s.provider.transfer(transfer), TransferRejected);
 });

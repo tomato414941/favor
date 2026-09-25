@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useFetcher, useNavigate } from 'react-router';
-import type { LinkDelivery, RequestLinkResult, Visibility } from '../../src/shared';
+import { Link, useFetcher, useNavigate } from 'react-router';
+import type { LinkDelivery, PaymentMode, RequestLinkResult, Visibility } from '../../src/shared';
+import { useSite } from '../root';
 import { Arrow, useOperationKey, type ActionFailure } from './ui';
 import { number, visibilityLabels, yen } from './format';
 
 export interface RequestFormSettings {
-  paymentMode: 'mock' | 'stripe_test';
+  paymentMode: PaymentMode;
   terms: {
     recommendedAmount: number;
     minimumAmount: number;
@@ -23,6 +24,7 @@ export function RequestForm({
   settings: RequestFormSettings;
 }) {
   const fetcher = useFetcher<Created>();
+  const { hasPublicProfile } = useSite();
   const navigate = useNavigate();
   const operation = useOperationKey();
   const [brief, setBrief] = useState('');
@@ -149,7 +151,9 @@ export function RequestForm({
               <p>
                 作成時にカードの利用枠を仮押さえし、納品時に支払います。取消・辞退・中止・期限切れの場合は解除します。
               </p>
-              <p className="hint">試用版のため、実際の支払いは発生しません。</p>
+              {paymentMode !== 'stripe_live' && (
+                <p className="hint">試用版のため、実際の支払いは発生しません。</p>
+              )}
             </div>
             <label className="checkbox-line review-agreement">
               <input
@@ -161,6 +165,17 @@ export function RequestForm({
               />
               <span>内容・金額・条件を確認しました</span>
             </label>
+            {hasPublicProfile && (
+              <p className="hint">
+                <Link to="/terms" target="_blank" rel="noreferrer">
+                  利用規約
+                </Link>
+                ・
+                <Link to="/legal" target="_blank" rel="noreferrer">
+                  取消・返金について
+                </Link>
+              </p>
+            )}
             <div className="submit-row">
               <button
                 className="quiet-button"
@@ -176,7 +191,7 @@ export function RequestForm({
               <button className="primary" type="submit" disabled={busy || !agreed}>
                 {busy
                   ? '処理しています…'
-                  : paymentMode === 'stripe_test'
+                  : paymentMode !== 'mock'
                     ? 'カード入力へ'
                     : byMail
                       ? 'メールで送る'

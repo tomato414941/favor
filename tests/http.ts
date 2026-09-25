@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { createRequestHandler, RouterContextProvider, type ServerBuild } from 'react-router';
 import type { EmailDelivery } from '../src/server/email-delivery.js';
 import type { RequestService } from '../src/server/service.js';
+import type { PublicProfile } from '../src/server/public-profile.js';
 
 // HTTP tests run against the built application, exactly as the server entrypoint does.
 type Entry = typeof import('../app/entry.server');
@@ -22,13 +23,14 @@ export interface Call {
 }
 export async function serve(
   service: RequestService,
-  options: { mail?: EmailDelivery; publicOrigin?: string } = {},
+  options: { mail?: EmailDelivery; publicOrigin?: string; publicProfile?: PublicProfile } = {},
 ) {
   const favor = new entry.Favor({
     service,
     auth: 'demo',
     ...(options.mail ? { mail: options.mail } : {}),
     ...(options.publicOrigin ? { publicOrigin: options.publicOrigin } : {}),
+    ...(options.publicProfile ? { publicProfile: options.publicProfile } : {}),
   });
   const origin = options.publicOrigin ?? 'http://localhost';
   async function request(path: string, call: Call = {}): Promise<Response> {

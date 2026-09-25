@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { RecipientState, RecipientView } from '../shared.js';
 import { DomainError } from './errors.js';
-import type { ConnectProvider, Recipient, Transfer } from './connect-provider.js';
+import type { ConnectProvider, Recipient } from './connect-provider.js';
 import type { Store } from './store.js';
 
 interface RecipientRow extends Recipient {
@@ -93,49 +93,5 @@ export class Recipients {
         "INSERT INTO transfers (request_id, recipient_id, account_id, amount, state) VALUES (?, ?, ?, ?, 'pending')",
       )
       .run(requestId, row.id, row.account_id, amount);
-  }
-  async settle(requestId: string) {
-    return this.exclusive(`transfer:${requestId}`, async () => {
-      const row = this.store.db
-        .prepare(
-          `SELECT t.*, p.link_id, p.intent_id, p.amount AS payment_amount FROM transfers t
-        JOIN payments p ON p.request_id = t.request_id
-        JOIN recipients a ON a.id = t.recipient_id
-        WHERE t.request_id = ? AND t.state = 'pending' AND p.state = 'captured' AND a.provider = ?`,
-        )
-        .get(requestId, this.provider.mode) as unknown as Transfer | undefined;
-      if (!row) return;
-      this.store.db
-        .prepare('UPDATE transfers SET checked_at = ? WHERE request_id = ?')
-        .run(this.clock(), requestId);
-      const id = await this.provider.transfer(row);
-      this.store.transaction(() => {
-        this.store.db
-          .prepare(
-            "UPDATE transfers SET state = 'transferred', transfer_id = ? WHERE request_id = ?",
-          )
-          .run(id, requestId);
-        this.store.db
-          .prepare('INSERT OR IGNORE INTO effects VALUES (?, ?, ?)')
-          .run(requestId, 'transfer', this.clock());
-      });
-    });
-  }
-  async reconcile() {
-    const rows = this.store.db
-      .prepare(
-        `SELECT t.request_id FROM transfers t
-      JOIN payments p ON p.request_id = t.request_id JOIN recipients a ON a.id = t.recipient_id
-      WHERE t.state = 'pending' AND p.state = 'captured' AND a.provider = ? AND t.checked_at <= ?
-      ORDER BY t.checked_at LIMIT 20`,
-      )
-      .all(this.provider.mode, this.clock() - 10000);
-    for (const row of rows) {
-      try {
-        await this.settle(String(row.request_id));
-      } catch {
-        /* Retry the saved obligation with the same beneficiary and idempotency key. */
-      }
-    }
   }
 }

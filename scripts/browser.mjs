@@ -14,7 +14,8 @@ const port = probe.address().port;
 await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()));
 const server = spawn(process.execPath, ['server.mjs'], {
   env: { ...process.env, FAVOR_PAYMENT_MODE: 'mock', FAVOR_AUTH_MODE: 'demo', NODE_ENV: 'test', FAVOR_MAIL_DELIVERY: 'file', FAVOR_DATA_DIR: directory, FAVOR_PORT: String(port),
-    FAVOR_PUBLIC_ORIGIN: `http://127.0.0.1:${port}`, FAVOR_TRUST_PROXY: 'none' },
+    FAVOR_PUBLIC_ORIGIN: `http://127.0.0.1:${port}`, FAVOR_TRUST_PROXY: 'none',
+    FAVOR_PUBLIC_PROFILE: JSON.stringify({ businessType: 'individual', email: 'support@example.test', contactHours: '平日10〜17時', discloseOnRequest: true }) },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
@@ -37,7 +38,7 @@ try {
     await delay(200);
   }
   if (!ready) throw new Error(`Demo server did not start: ${logs}`);
-  browser = spawn('python3', ['tests/browser.py', url], { stdio: 'inherit', env: { ...process.env, PYTHONUNBUFFERED: '1', FAVOR_TEST_MAIL_DIR: join(directory, 'mail') } });
+  browser = spawn('python3', ['tests/browser.py', url], { stdio: 'inherit', env: { ...process.env, PYTHONUNBUFFERED: '1', FAVOR_TEST_MAIL_DIR: join(directory, 'mail'), FAVOR_TEST_DB_PATH: join(directory, 'app.sqlite') } });
   const [code] = await once(browser, 'exit');
   process.exitCode = code ?? 1;
 } catch (error) {
