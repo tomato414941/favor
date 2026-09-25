@@ -2,12 +2,12 @@
 # Sign in as the sample account (a Clerk user) and print a Checkout or request link URL.
 # Complete test card entry at Checkout, then rerun to obtain the request link.
 #
-#   ops/sample-link.sh                                   # staging: origin and Clerk key from staging.env
+#   ops/sample-link.sh                                   # staging: origin and Clerk key from .env.staging
 #   FAVOR_ORIGIN=http://127.0.0.1:3210 CLERK_SECRET_KEY=sk_test_... ops/sample-link.sh   # local server
 set -eu
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-env_file=${FAVOR_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/favor/staging.env}
+env_file=${FAVOR_ENV_FILE:-$project_dir/.env.staging}
 # Clerk rejects reserved test domains, so the sample account uses a plain address; it never receives mail.
 email=$(printf '%s' "${FAVOR_SAMPLE_EMAIL:-favor.sample@example.com}" | tr '[:upper:]' '[:lower:]')
 origin=${FAVOR_ORIGIN:-}
