@@ -692,7 +692,7 @@ nav .count {
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
-.detail-facts div:first-child dd {
+.detail-facts .amount-total dd {
   font-size: 22px;
   font-weight: 600;
   line-height: 1.5;

@@ -7,8 +7,9 @@ import {
   type UploadInput,
 } from '../src/shared';
 import { encodeFile } from './api';
+import { AmountFacts } from './AmountFacts';
 import { Arrow, ConfirmAction, Link } from './ui';
-import { date, number, visibilityLabels, yen } from './format';
+import { date, number, visibilityLabels } from './format';
 
 interface Limits {
   files: number;
@@ -62,10 +63,7 @@ export function RequestDetail({
         <p>{request.brief}</p>
       </div>
       <dl className="detail-facts">
-        <div>
-          <dt>金額</dt>
-          <dd>{yen(request.amount)}</dd>
-        </div>
+        <AmountFacts {...request} recipient={role === 'creator'} />
         <div>
           <dt>公開設定</dt>
           <dd>{visibilityLabels[request.visibility]}</dd>

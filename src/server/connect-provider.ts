@@ -12,6 +12,7 @@ export interface Transfer {
   account_id: string;
   recipient_id: string;
   amount: number;
+  payment_amount: number;
   intent_id: string;
 }
 export interface ConnectProvider {
@@ -33,10 +34,26 @@ export class StripeConnect implements ConnectProvider {
       account.identity?.country !== 'JP' ||
       account.dashboard !== 'express' ||
       account.defaults?.responsibilities?.requirements_collector !== 'stripe' ||
+      account.defaults.responsibilities.fees_collector !== 'application' ||
+      account.defaults.responsibilities.losses_collector !== 'application' ||
       account.metadata?.favor_recipient_id !== recipient.id ||
       (recipient.account_id && account.id !== recipient.account_id)
     )
       throw mismatch();
+  }
+  private async checkPayouts(accountId: string) {
+    const settings = await this.stripe.balanceSettings.retrieve({}, { stripeAccount: accountId });
+    const payouts = settings.payments.payouts;
+    const schedule = payouts?.schedule;
+    // The JP account defaults are managed in Stripe; restricted keys can only read payout settings.
+    if (
+      schedule?.interval !== 'weekly' ||
+      schedule.weekly_payout_days?.length !== 1 ||
+      schedule.weekly_payout_days[0] !== 'friday' ||
+      (payouts?.minimum_balance_by_currency?.jpy ?? 0) !== 0
+    )
+      throw new DomainError('PAYOUT_SETTINGS', '振込設定を確認できません。', 503);
+    return payouts?.status === 'enabled';
   }
   async create(recipient: Recipient, email: string) {
     // Recover creation after a lost response, including beyond Stripe's idempotency window.
@@ -51,6 +68,7 @@ export class StripeConnect implements ConnectProvider {
           }),
           recipient,
         );
+        await this.checkPayouts(account.id);
         return account.id;
       }
     }
@@ -73,6 +91,7 @@ export class StripeConnect implements ConnectProvider {
       { idempotencyKey: `favor:recipient:${recipient.id}` },
     );
     this.check(account, recipient);
+    await this.checkPayouts(account.id);
     return account.id;
   }
   async inspect(recipient: Recipient): Promise<RecipientState> {
@@ -81,6 +100,7 @@ export class StripeConnect implements ConnectProvider {
       include: ['identity', 'defaults', 'configuration.recipient', 'requirements'],
     });
     this.check(account, recipient);
+    const payoutsEnabled = await this.checkPayouts(account.id);
     const balance = account.configuration?.recipient?.capabilities?.stripe_balance;
     const due =
       account.requirements?.entries?.filter(
@@ -89,6 +109,7 @@ export class StripeConnect implements ConnectProvider {
     if (
       balance?.stripe_transfers?.status === 'active' &&
       balance.payouts?.status === 'active' &&
+      payoutsEnabled &&
       !due.length
     )
       return 'ready';
@@ -118,6 +139,13 @@ export class StripeConnect implements ConnectProvider {
     return (await this.stripe.accounts.createLoginLink(recipient.account_id)).url;
   }
   async transfer(transfer: Transfer) {
+    if (
+      !Number.isSafeInteger(transfer.amount) ||
+      !Number.isSafeInteger(transfer.payment_amount) ||
+      transfer.amount <= 0 ||
+      transfer.amount > transfer.payment_amount
+    )
+      throw mismatch();
     const group = `favor:${transfer.link_id}`;
     const check = (item: Stripe.Transfer) => {
       if (
@@ -149,7 +177,7 @@ export class StripeConnect implements ConnectProvider {
       intent.livemode ||
       intent.status !== 'succeeded' ||
       intent.currency !== 'jpy' ||
-      intent.amount_received !== transfer.amount ||
+      intent.amount_received !== transfer.payment_amount ||
       intent.metadata.favor_link_id !== transfer.link_id ||
       !charge ||
       typeof charge === 'string' ||

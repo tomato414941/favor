@@ -98,7 +98,7 @@ export class Recipients {
     return this.exclusive(`transfer:${requestId}`, async () => {
       const row = this.store.db
         .prepare(
-          `SELECT t.*, p.link_id, p.intent_id FROM transfers t
+          `SELECT t.*, p.link_id, p.intent_id, p.amount AS payment_amount FROM transfers t
         JOIN payments p ON p.request_id = t.request_id
         JOIN recipients a ON a.id = t.recipient_id
         WHERE t.request_id = ? AND t.state = 'pending' AND p.state = 'captured' AND a.provider = ?`,

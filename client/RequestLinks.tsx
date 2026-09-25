@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { RecipientAccount } from './RecipientAccount';
+import { AmountFacts } from './AmountFacts';
 import type {
   AuthOptions,
   IdentitySession,
@@ -13,7 +14,7 @@ import { SignInPanel } from './Auth';
 import { RequestForm, type RequestFormSettings } from './RequestForm';
 import { Arrow, ConfirmAction, Link } from './ui';
 
-import { yen, date, visibilityLabels } from './format';
+import { date, visibilityLabels } from './format';
 
 function useMutationKeys() {
   const keys = useRef(new Map<string, { payload: string; key: string }>());
@@ -52,17 +53,14 @@ function useLinkActions() {
   return { busy, error, run, mutate };
 }
 
-function LinkFacts({ link }: { link: RequestLinkView }) {
+function LinkFacts({ link, recipient = false }: { link: RequestLinkView; recipient?: boolean }) {
   return (
     <>
       <div className="brief-block">
         <p>{link.brief}</p>
       </div>
       <dl className="detail-facts">
-        <div>
-          <dt>金額</dt>
-          <dd>{yen(link.amount)}</dd>
-        </div>
+        <AmountFacts {...link} recipient={recipient} />
         <div>
           <dt>公開設定</dt>
           <dd>{visibilityLabels[link.visibility]}</dd>
@@ -474,7 +472,7 @@ export function RequestLinkLanding({ token, options }: { token: string; options:
                 <h1>{link.clientName}から</h1>
                 <LinkStatus link={link} />
               </div>
-              <LinkFacts link={link} />
+              <LinkFacts link={link} recipient />
               {link.state === 'pending' && (
                 <div className="detail-actions">
                   {identity ? (

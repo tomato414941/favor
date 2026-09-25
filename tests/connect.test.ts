@@ -133,7 +133,8 @@ test('Stripeの受取可能状態を受諾時と初回納品時に確認する',
     assert.equal(delivered.transferState, 'transferred');
     const transfer = s.connect.transfers.get(delivered.id)!;
     assert.equal(transfer.account_id, account);
-    assert.equal(transfer.amount, input.amount);
+    assert.equal(transfer.amount, 11040);
+    assert.equal(transfer.payment_amount, input.amount);
     assert.equal(transfer.link_id, link.link.id);
   } finally {
     s.store.close();
@@ -187,6 +188,8 @@ test('送金の通信断でも納品を保存し、再起動後に同じ相手�
     assert.equal(s.service.get(s.recipient.subject, id!).transferState, 'transferred');
     await s.service.deliver(s.recipient.subject, id!, randomUUID(), files);
     assert.equal(connect.transfers.size, 1);
+    assert.equal(connect.transfers.get(id!)!.amount, 11040);
+    assert.equal(s.service.get(s.recipient.subject, id!).recipientAmount, 11040);
     assert.equal(
       s.store.db
         .prepare("SELECT COUNT(*) AS n FROM effects WHERE request_id = ? AND operation = 'capture'")
@@ -283,7 +286,13 @@ function stripeFixture() {
     livemode: false,
     dashboard: 'express',
     identity: { country: 'JP' },
-    defaults: { responsibilities: { requirements_collector: 'stripe' } },
+    defaults: {
+      responsibilities: {
+        requirements_collector: 'stripe',
+        fees_collector: 'application',
+        losses_collector: 'application',
+      },
+    },
     metadata: { favor_recipient_id: recipient.id },
     configuration: {
       recipient: {
@@ -298,7 +307,26 @@ function stripeFixture() {
   };
   let sourceTransaction: string | undefined;
   const sent: Stripe.Transfer[] = [];
+  const intent = {
+    livemode: false,
+    status: 'succeeded',
+    currency: 'jpy',
+    amount_received: 12000,
+    metadata: { favor_link_id: 'link' },
+    latest_charge: { id: 'ch_captured', captured: true, amount_refunded: 0 },
+  };
+  const payouts = {
+    schedule: { interval: 'weekly', weekly_payout_days: ['friday'] },
+    minimum_balance_by_currency: { jpy: 0 },
+    status: 'enabled',
+  };
   const stripe = {
+    balanceSettings: {
+      retrieve: async (_: unknown, options: { stripeAccount: string }) => {
+        assert.equal(options.stripeAccount, recipient.account_id);
+        return { payments: { payouts: structuredClone(payouts) } };
+      },
+    },
     v2: {
       core: {
         accounts: {
@@ -313,14 +341,7 @@ function stripeFixture() {
       },
     },
     paymentIntents: {
-      retrieve: async () => ({
-        livemode: false,
-        status: 'succeeded',
-        currency: 'jpy',
-        amount_received: 12000,
-        metadata: { favor_link_id: 'link' },
-        latest_charge: { id: 'ch_captured', captured: true, amount_refunded: 0 },
-      }),
+      retrieve: async () => structuredClone(intent),
     },
     transfers: {
       list: async () => ({ data: structuredClone(sent), has_more: false }),
@@ -341,6 +362,8 @@ function stripeFixture() {
   return {
     recipient,
     account,
+    intent,
+    payouts,
     sent,
     provider: new StripeConnect(stripe),
     sourceTransaction: () => sourceTransaction,
@@ -350,6 +373,9 @@ function stripeFixture() {
 test('受取機能と確認期限を照合してStripeの登録状態を判定する', async () => {
   const s = stripeFixture();
   assert.equal(await s.provider.inspect(s.recipient), 'ready');
+  s.payouts.status = 'disabled';
+  assert.equal(await s.provider.inspect(s.recipient), 'incomplete');
+  s.payouts.status = 'enabled';
   s.account.configuration.recipient.capabilities.stripe_balance.payouts.status = 'restricted';
   assert.equal(await s.provider.inspect(s.recipient), 'incomplete');
   s.account.requirements.entries = [
@@ -366,6 +392,20 @@ test('受取機能と確認期限を照合してStripeの登録状態を判定�
   await assert.rejects(s.provider.inspect(s.recipient), code('CONNECT_MISMATCH'));
 });
 
+test('毎週金曜日の自動振込と留保額ゼロを照合して受取可能と判定する', async () => {
+  const s = stripeFixture();
+  s.payouts.schedule.interval = 'manual';
+  await assert.rejects(s.provider.inspect(s.recipient), code('PAYOUT_SETTINGS'));
+  s.payouts.schedule.interval = 'weekly';
+  s.payouts.schedule.weekly_payout_days = ['monday'];
+  await assert.rejects(s.provider.inspect(s.recipient), code('PAYOUT_SETTINGS'));
+  s.payouts.schedule.weekly_payout_days = ['friday'];
+  s.payouts.minimum_balance_by_currency.jpy = 5000;
+  await assert.rejects(s.provider.inspect(s.recipient), code('PAYOUT_SETTINGS'));
+  s.payouts.minimum_balance_by_currency.jpy = 0;
+  assert.equal(await s.provider.inspect(s.recipient), 'ready');
+});
+
 test('納品の決済を送金元に指定し、再試行ではStripe上の送金先と金額を照合する', async () => {
   const s = stripeFixture();
   const transfer = {
@@ -373,11 +413,13 @@ test('納品の決済を送金元に指定し、再試行ではStripe上の送�
     link_id: 'link',
     account_id: s.recipient.account_id,
     recipient_id: s.recipient.id,
-    amount: 12000,
+    amount: 11040,
+    payment_amount: 12000,
     intent_id: 'pi_paid',
   };
   assert.equal(await s.provider.transfer(transfer), 'tr_confirmed');
   assert.equal(s.sourceTransaction(), 'ch_captured');
+  assert.equal(s.sent[0]!.amount, 11040);
   assert.equal(await s.provider.transfer(transfer), 'tr_confirmed');
   assert.equal(s.sent.length, 1);
   for (const invalid of [
@@ -389,6 +431,27 @@ test('納品の決済を送金元に指定し、再試行ではStripe上の送�
       s.provider.transfer({ ...transfer, ...invalid }),
       code('CONNECT_MISMATCH'),
     );
+});
+
+test('依頼の全額が決済済みであることを照合して利用料を引いた額を送金する', async () => {
+  const s = stripeFixture();
+  const transfer = {
+    request_id: 'request',
+    link_id: 'link',
+    account_id: s.recipient.account_id,
+    recipient_id: s.recipient.id,
+    amount: 11040,
+    payment_amount: 12000,
+    intent_id: 'pi_paid',
+  };
+  s.intent.amount_received = 11040;
+  await assert.rejects(s.provider.transfer(transfer), code('CONNECT_MISMATCH'));
+  s.intent.amount_received = 12000;
+  s.intent.latest_charge.amount_refunded = 1;
+  await assert.rejects(s.provider.transfer(transfer), code('CONNECT_MISMATCH'));
+  s.intent.latest_charge.amount_refunded = 0;
+  assert.equal(await s.provider.transfer(transfer), 'tr_confirmed');
+  assert.equal(s.sent[0]!.amount, 11040);
 });
 
 test('作成済みの受取人をStripeから検索して同じ登録を復元する', async () => {

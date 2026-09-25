@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RecipientView } from '../src/shared';
+import { PLATFORM_FEE_PERCENT, type RecipientView } from '../src/shared';
 import { api } from './api';
 import { navigate } from './ui';
 
@@ -112,6 +112,22 @@ export function RecipientAccount({
       aria-label="売上の受け取り"
     >
       <h2>売上の受け取り</h2>
+      {full && (
+        <dl className="detail-facts">
+          <div>
+            <dt>利用料</dt>
+            <dd>{PLATFORM_FEE_PERCENT}%（税込）</dd>
+          </div>
+          <div>
+            <dt>振込手数料</dt>
+            <dd>無料</dd>
+          </div>
+          <div>
+            <dt>振込手続き</dt>
+            <dd>毎週金曜日</dd>
+          </div>
+        </dl>
+      )}
       {error && (
         <p className="message error" role="alert">
           {error}

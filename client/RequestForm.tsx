@@ -88,7 +88,7 @@ export function RequestForm({
           <>
             <p className="review-brief">{brief}</p>
             <dl className="detail-facts review-facts">
-              <div>
+              <div className="amount-total">
                 <dt>金額</dt>
                 <dd>{yen(Number(amount))}</dd>
               </div>

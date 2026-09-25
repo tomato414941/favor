@@ -12,14 +12,14 @@ export class Store {
     const initialized = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
       .get();
-    if (version !== 7 && (version !== 0 || initialized)) {
+    if (version !== 8 && (version !== 0 || initialized)) {
       this.db.close();
       throw new Error(
-        'Unsupported database schema. Prepare schema version 7 before starting the application.',
+        'Unsupported database schema. Prepare schema version 8 before starting the application.',
       );
     }
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000');
-    if (version === 7) return;
+    if (version === 8) return;
     this.transaction(() =>
       this.db.exec(`
       CREATE TABLE users (
@@ -29,6 +29,7 @@ export class Store {
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES users(id),
         creator_id TEXT NOT NULL REFERENCES users(id),
         brief TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0),
+        platform_fee INTEGER NOT NULL CHECK (platform_fee >= 0 AND platform_fee < amount),
         visibility TEXT NOT NULL, state TEXT NOT NULL,
         created_at INTEGER NOT NULL, accept_by INTEGER NOT NULL, deliver_by INTEGER NOT NULL,
         cancelled_reason TEXT, delivery_version INTEGER NOT NULL DEFAULT 0
@@ -81,6 +82,7 @@ export class Store {
         delivery TEXT NOT NULL DEFAULT 'self' CHECK (delivery IN ('self', 'email')),
         recipient_email TEXT,
         brief TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0),
+        platform_fee INTEGER NOT NULL CHECK (platform_fee >= 0 AND platform_fee < amount),
         visibility TEXT NOT NULL,
         state TEXT NOT NULL CHECK (state IN ('awaiting_payment', 'pending', 'accepted', 'cancelled')),
         created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, deliver_by INTEGER NOT NULL,
@@ -99,7 +101,7 @@ export class Store {
       CREATE TABLE link_optouts (
         email TEXT PRIMARY KEY, at INTEGER NOT NULL
       ) STRICT;
-      PRAGMA user_version = 7;
+      PRAGMA user_version = 8;
     `),
     );
   }

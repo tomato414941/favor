@@ -3,6 +3,7 @@ export type RequestState = 'delivering' | 'accepted' | 'delivered' | 'cancelled'
 export type PaymentState =
   'pending' | 'authorized' | 'capturing' | 'captured' | 'releasing' | 'released';
 export type Role = 'client' | 'creator';
+export const PLATFORM_FEE_PERCENT = 8;
 export type RecipientState = 'unregistered' | 'incomplete' | 'reviewing' | 'ready';
 export interface RecipientView {
   state: RecipientState;
@@ -43,6 +44,8 @@ export interface WorkView {
 export interface RequestView extends WorkView {
   viewerRole: Role;
   amount: number;
+  platformFee: number;
+  recipientAmount: number;
   cancelledReason: string | null;
   paymentState: PaymentState;
   transferState: 'pending' | 'transferred' | null;
@@ -76,6 +79,8 @@ export interface RequestLinkView {
   clientName: string;
   brief: string;
   amount: number;
+  platformFee: number;
+  recipientAmount: number;
   visibility: Visibility;
   state: RequestLinkState;
   paymentState: PaymentState;

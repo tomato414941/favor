@@ -41,6 +41,7 @@ interface RequestRow {
   creator_id: string;
   brief: string;
   amount: number;
+  platform_fee: number;
   visibility: Visibility;
   state: RequestState;
   created_at: number;
@@ -155,6 +156,8 @@ export class RequestService {
       ...this.workView(row, actor),
       viewerRole: actor === row.client_id ? 'client' : 'creator',
       amount: row.amount,
+      platformFee: row.platform_fee,
+      recipientAmount: row.amount - row.platform_fee,
       paymentState: this.payment(row.id).state,
       transferState:
         this.one<{ state: 'pending' | 'transferred' }>(
@@ -257,14 +260,18 @@ export class RequestService {
       const payment = this.payments.row(linkId);
       if (payment.state !== 'authorized' || payment.amount !== input.amount)
         fail('INVALID_PAYMENT', '支払いの仮押さえを確認できません。');
+      const link = this.one<{ platform_fee: number }>(
+        'SELECT platform_fee FROM request_links WHERE id = ?',
+        linkId,
+      )!;
       if (this.clock() >= Math.min(dates.expiresAt, dates.deliverBy, payment.hold_until))
         fail('LINK_EXPIRED', '依頼リンクの有効期限を過ぎました。');
       const id = randomUUID();
       this.store.db
         .prepare(
           `INSERT INTO requests
-        (id, client_id, creator_id, brief, amount, visibility, state, created_at, accept_by, deliver_by)
-        VALUES (?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?)`,
+        (id, client_id, creator_id, brief, amount, platform_fee, visibility, state, created_at, accept_by, deliver_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?)`,
         )
         .run(
           id,
@@ -272,13 +279,14 @@ export class RequestService {
           actor,
           input.brief,
           input.amount,
+          link.platform_fee,
           input.visibility,
           dates.createdAt,
           dates.expiresAt,
           dates.deliverBy,
         );
       this.store.db.prepare('UPDATE payments SET request_id = ? WHERE link_id = ?').run(id, linkId);
-      this.recipients.bind(actor, id, input.amount);
+      this.recipients.bind(actor, id, input.amount - link.platform_fee);
       this.effect(id, 'authorize');
       this.audit(id, actor, 'accept');
       return this.view(this.row(id), actor);

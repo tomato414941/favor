@@ -145,6 +145,8 @@ def main():
             detail = receiving.get_by_role('article', name='依頼', exact=True)
             expect(detail).to_contain_text(brief)
             expect(detail).to_contain_text('¥12,000')
+            expect(detail.locator('.detail-facts > div').filter(has=detail.page.locator('dt', has_text='利用料（税込）'))).to_contain_text('−¥960')
+            expect(detail.locator('.detail-facts > div').filter(has=detail.page.locator('dt', has_text='受取額'))).to_contain_text('¥11,040')
             assert receiver.request.get(f'{base}/api/auth/identity').json() is None
             assert visitor.request.get(f'{base}/api/links/by-token').status == 404
             assert brief not in visitor.request.get(base).text()
@@ -196,6 +198,7 @@ def main():
             detail.get_by_role('link', name='受けた依頼へ', exact=True).click()
             work = receiving.get_by_role('article', name='依頼の詳細', exact=True)
             expect(work).to_contain_text('制作中')
+            expect(work.locator('.detail-facts > div').filter(has=work.page.locator('dt', has_text='受取額'))).to_contain_text('¥11,040')
             work.get_by_label('納品ファイルを選択', exact=True).set_input_files({'name': 'empty.txt', 'mimeType': 'text/plain', 'buffer': b''})
             work.get_by_role('button', name='作品を渡す', exact=True).click()
             expect(work.get_by_role('alert')).to_contain_text('空でないファイル')
@@ -217,6 +220,14 @@ def main():
             work.get_by_role('button', name='差し替える', exact=True).click()
             expect(work).to_contain_text('第2版')
             layout(receiving, 'delivered')
+            receiving.get_by_role('link', name='受取先', exact=True).click()
+            payout = receiving.get_by_role('region', name='売上の受け取り', exact=True)
+            expect(payout).to_contain_text('8%（税込）')
+            expect(payout.locator('.detail-facts > div').filter(has=receiving.locator('dt', has_text='振込手数料'))).to_contain_text('無料')
+            expect(payout).to_contain_text('毎週金曜日')
+            layout(receiving, 'payouts')
+            receiving.go_back()
+            expect(work).to_contain_text('第2版')
 
             page.reload()
             page.get_by_role('navigation').get_by_role('link', name=re.compile('^送った依頼')).click()

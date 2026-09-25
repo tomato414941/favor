@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { PLATFORM_FEE_PERCENT } from '../shared.js';
 import type {
   LinkDelivery,
   RequestLinkInput,
@@ -25,6 +26,7 @@ interface LinkRow {
   recipient_email: string | null;
   brief: string;
   amount: number;
+  platform_fee: number;
   visibility: Visibility;
   state: RequestLinkState;
   created_at: number;
@@ -131,6 +133,8 @@ export class RequestLinkService {
       clientName: !sender && row.visibility === 'anonymous' ? '匿名の依頼者' : client.name,
       brief: row.brief,
       amount: row.amount,
+      platformFee: row.platform_fee,
+      recipientAmount: row.amount - row.platform_fee,
       visibility: row.visibility,
       state: row.state,
       paymentState: this.requests.payments.row(row.id).state,
@@ -262,8 +266,8 @@ export class RequestLinkService {
         .prepare(
           `INSERT INTO request_links
         (id, client_id, recipient_provider, recipient_subject, recipient_name, delivery, recipient_email,
-         brief, amount, visibility, state, created_at, expires_at, deliver_by)
-        VALUES (?, ?, '', '', '', ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?, ?)`,
+         brief, amount, platform_fee, visibility, state, created_at, expires_at, deliver_by)
+        VALUES (?, ?, '', '', '', ?, ?, ?, ?, ?, ?, 'awaiting_payment', ?, ?, ?)`,
         )
         .run(
           id,
@@ -272,6 +276,7 @@ export class RequestLinkService {
           recipientEmail,
           normalized.brief,
           input.amount,
+          Math.floor((input.amount * PLATFORM_FEE_PERCENT) / 100),
           input.visibility,
           now,
           expiresAt,

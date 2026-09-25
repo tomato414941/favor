@@ -51,11 +51,42 @@ test('秘密のリンクから登録前に依頼内容と金額を確認する',
     const view = s.links.read(created.token!);
     assert.equal(view.brief, input.brief);
     assert.equal(view.amount, input.amount);
+    assert.equal(view.platformFee, 960);
+    assert.equal(view.recipientAmount, 11040);
     assert.equal(view.clientName, '青葉 / aoba');
     assert.equal(view.paymentState, 'authorized');
     assert.throws(() => s.links.read(created.link.id), errorCode('LINK_UNAVAILABLE'));
     assert.throws(() => s.links.read('A'.repeat(43)), errorCode('LINK_UNAVAILABLE'));
     assert.equal(s.links.list('demo-client')[0]!.id, created.link.id);
+  } finally {
+    s.store.close();
+  }
+});
+test('利用料の円未満を切り捨て、提示した受取額で受諾と納品を処理する', async () => {
+  const s = await setup();
+  try {
+    for (const [amount, fee, net] of [
+      [1000, 80, 920],
+      [1001, 80, 921],
+      [299999, 23999, 276000],
+    ]) {
+      const created = await s.links.create('demo-client', key(), { ...input, amount: amount! });
+      const view = s.links.read(created.token!);
+      assert.equal(view.platformFee, fee);
+      assert.equal(view.recipientAmount, net);
+      const accepted = await s.links.accept(s.recipient, created.token!, key(), true);
+      const delivered = await s.service.deliver(s.recipient.subject, accepted.requestId!, key(), [
+        { name: '作品.txt', content: Buffer.from('星の物語').toString('base64') },
+      ]);
+      assert.equal(delivered.platformFee, fee);
+      assert.equal(delivered.recipientAmount, net);
+      assert.equal(s.service.payments.row(created.link.id).amount, amount);
+      assert.equal(
+        s.store.db.prepare('SELECT amount FROM transfers WHERE request_id = ?').get(delivered.id)!
+          .amount,
+        net,
+      );
+    }
   } finally {
     s.store.close();
   }
