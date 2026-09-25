@@ -13,7 +13,7 @@ WORKDIR /app
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
-COPY server.mjs ./
+COPY server.mjs LICENSE ./
 COPY scripts/migrate-v10.mjs scripts/payments-report.mjs ./scripts/
 COPY src/server/settlement-schema.ts ./src/server/
 RUN mkdir -p /var/lib/favor && chown node:node /var/lib/favor && chmod 700 /var/lib/favor
