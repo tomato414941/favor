@@ -47,6 +47,27 @@ function replace(path: string) {
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
+/** Japanese strings, with Favor's own wording where Clerk would show the application name. */
+const localization = {
+  ...jaJP,
+  signIn: {
+    ...jaJP.signIn,
+    start: {
+      ...jaJP.signIn?.start,
+      title: 'Favor にログイン',
+      subtitle: 'メールアドレスで続けてください',
+    },
+  },
+  signUp: {
+    ...jaJP.signUp,
+    start: {
+      ...jaJP.signUp?.start,
+      title: 'Favor に登録',
+      subtitle: 'メールアドレスで続けてください',
+    },
+  },
+};
+
 /** Re-reads who is signed in whenever Clerk's own state changes. */
 function ClerkSync({ onChange }: { onChange: () => void }) {
   const { isLoaded, isSignedIn } = useAuth();
@@ -67,7 +88,7 @@ function Providers({
 }) {
   if (options?.mode !== 'clerk' || !options.publishableKey) return <>{children}</>;
   return (
-    <ClerkProvider publishableKey={options.publishableKey} localization={jaJP}>
+    <ClerkProvider publishableKey={options.publishableKey} localization={localization}>
       <ClerkSync onChange={onChange} />
       {children}
     </ClerkProvider>

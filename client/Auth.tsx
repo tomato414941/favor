@@ -88,7 +88,7 @@ export function AccountEntry({
       <SiteHeader identity={null} active={null} />
       <main className="shell account-layout">
         <section className="account-panel" aria-label="ログイン">
-          <h1>ログイン</h1>
+          {options.mode === 'demo' && <h1>ログイン</h1>}
           <SignInPanel options={options} onChange={onChange} />
         </section>
       </main>
