@@ -23,7 +23,7 @@ export const DEMO_POLICY = {
   acceptanceMs: 7 * DAY,
   deliveryMs: 30 * DAY,
   authorizationMs: 30 * DAY,
-  recommendedAmount: 12000,
+  recommendedAmount: 1000,
   minimumAmount: 1000,
   maximumAmount: 299999,
   maximumBriefLength: 2000,
