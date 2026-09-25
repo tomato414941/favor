@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { Visibility } from '../src/shared.js';
-import { buildApp } from '../src/server/app.js';
 import { AuthService } from '../src/server/auth.js';
 import { RequestLinkService } from '../src/server/request-links.js';
 import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import { Mailbox } from './mailbox.js';
+import { serve } from './http.js';
 const notFound = (error: unknown) => error instanceof DomainError && error.code === 'NOT_FOUND';
 const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
 const files = (image: string) => [
@@ -72,23 +72,30 @@ test('公開設定の納品済み依頼を作品として公開し、最新版�
   assert.throws(() => service.publicImage(shown, image.id), notFound);
   const latest = service.publicWork(shown).files.find((file) => file.name === '完成.PNG')!;
   assert.equal(service.publicImage(shown, latest.id).type, 'image/png');
-  const app = await buildApp(service, { demoAuth: true });
+  const app = await serve(service);
   try {
-    const list = await app.inject('/api/works');
-    assert.equal(list.statusCode, 200);
-    assert.ok(list.json().works.some((item: { id: string }) => item.id === shown));
-    const page = await app.inject(`/api/works/${shown}`);
-    assert.equal(page.statusCode, 200);
-    assert.equal(page.json().brief, 'publicの依頼');
-    const served = await app.inject(`/api/works/${shown}/files/${latest.id}`);
-    assert.equal(served.statusCode, 200);
-    assert.equal(served.headers['content-type'], 'image/png');
-    assert.equal(served.headers['content-disposition'], 'inline');
-    assert.match(String(served.headers['content-security-policy']), /sandbox/);
-    assert.equal(served.rawPayload.toString('base64'), png);
-    assert.equal((await app.inject(`/api/works/${hidden}`)).statusCode, 404);
-    assert.equal((await app.inject(`/api/works/${shown}/files/${text.id}`)).statusCode, 404);
-    assert.equal((await app.inject(`/api/requests/${shown}/files/${latest.id}`)).statusCode, 401);
+    const list = await app.request('/works');
+    assert.equal(list.status, 200);
+    assert.match(await list.text(), new RegExp(`/works/${shown}`));
+    const page = await app.request(`/works/${shown}`);
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    assert.match(html, /publicの依頼/);
+    assert.match(
+      html,
+      new RegExp(
+        `property="og:image" content="http://localhost/works/${shown}/files/${latest.id}"`,
+      ),
+    );
+    const served = await app.request(`/works/${shown}/files/${latest.id}`);
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get('content-type'), 'image/png');
+    assert.equal(served.headers.get('content-disposition'), 'inline');
+    assert.match(String(served.headers.get('content-security-policy')), /sandbox/);
+    assert.equal(Buffer.from(await served.arrayBuffer()).toString('base64'), png);
+    assert.equal((await app.request(`/works/${hidden}`)).status, 404);
+    assert.equal((await app.request(`/works/${shown}/files/${text.id}`)).status, 404);
+    assert.equal((await app.request(`/me/requests/${shown}/files/${latest.id}`)).status, 401);
   } finally {
     await app.close();
     store.close();

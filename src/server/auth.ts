@@ -1,8 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IdentitySession, SocialAccount } from '../shared.js';
-import type { IdentityRequest, IdentityResolver, ResolvedIdentity } from './identity.js';
-import { DomainError } from './service.js';
+import { DomainError } from './errors.js';
 import { Store } from './store.js';
+
+/** Who is making a request, as established by the identity provider. */
+export interface ResolvedIdentity {
+  subject: string;
+  email: string | null;
+  name: string;
+}
 
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 export const newToken = () => randomBytes(32).toString('base64url');
@@ -27,7 +33,7 @@ export class AuthService {
   constructor(
     readonly store: Store,
     readonly clock: () => number = Date.now,
-    readonly options: { allowDemo?: boolean; resolver?: IdentityResolver } = {},
+    readonly options: { allowDemo?: boolean; provider?: 'clerk' | 'demo' } = {},
   ) {}
 
   private requireDemo() {
@@ -35,7 +41,7 @@ export class AuthService {
       throw new DomainError('DEMO_DISABLED', '体験用の認証は利用できません。', 403);
   }
   /** Ensures a user row for an identity and returns the session view of it. */
-  private admit(identity: ResolvedIdentity): IdentitySession {
+  admit(identity: ResolvedIdentity): IdentitySession {
     this.store.db
       .prepare(
         `INSERT INTO users (id, name, email) VALUES (?, ?, ?)
@@ -43,7 +49,7 @@ export class AuthService {
       )
       .run(identity.subject, identity.name, identity.email);
     const account: SocialAccount = {
-      provider: this.options.resolver ? 'clerk' : 'demo',
+      provider: this.options.provider ?? 'demo',
       subject: identity.subject,
       handle: identity.email ?? identity.subject,
       name: identity.name,
@@ -84,15 +90,6 @@ export class AuthService {
   }
   logout(token: string | undefined) {
     if (isToken(token)) this.demoSessions.delete(hashToken(token));
-  }
-  /** Identity for an HTTP request: the provider's session, or a demo token. */
-  async resolve(request: IdentityRequest, demoToken: string | undefined): Promise<IdentitySession> {
-    if (this.options.resolver) {
-      const identity = await this.options.resolver(request);
-      if (identity) return this.admit(identity);
-      throw unauthorized();
-    }
-    return this.identity(demoToken);
   }
   /** Recipients are already users; accepting a link only needs their id. */
   registerRecipient(account: SocialAccount): string {

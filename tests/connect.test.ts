@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type Stripe from 'stripe';
 import { AuthService } from '../src/server/auth.js';
-import { buildApp } from '../src/server/app.js';
 import {
   StripeConnect,
   type ConnectProvider,
@@ -17,6 +16,7 @@ import { RequestLinkService } from '../src/server/request-links.js';
 import { RequestService, DomainError } from '../src/server/service.js';
 import { Store } from '../src/server/store.js';
 import type { RecipientState } from '../src/shared.js';
+import { serve } from './http.js';
 
 const input = {
   brief: '海辺の絵をお願いします。',
@@ -35,6 +35,7 @@ class Connect implements ConnectProvider {
   readonly transfers = new Map<string, Transfer>();
   readonly emails: string[] = [];
   readonly origins: string[] = [];
+  readonly dashboards: string[] = [];
   loseCreation = false;
   loseTransfer = false;
   async create(recipient: Recipient, email: string) {
@@ -56,6 +57,7 @@ class Connect implements ConnectProvider {
     return 'https://connect.stripe.com/setup/fixture';
   }
   async dashboard(recipient: Recipient) {
+    this.dashboards.push(recipient.account_id!);
     return `https://connect.stripe.com/express/${recipient.account_id}`;
   }
   async transfer(transfer: Transfer) {
@@ -212,67 +214,60 @@ test('送金の通信断でも納品を保存し、再起動後に同じ相手�
 
 test('ログイン中の本人のメールと受取先だけを使い、登録画面へ固定の戻り先を渡す', async () => {
   const s = setup();
-  const app = await buildApp(s.service, { demoAuth: true });
-  const action = { 'x-favor-action': '1' };
+  const app = await serve(s.service);
   try {
-    assert.equal((await app.inject('/api/recipient')).statusCode, 401);
-    const login = await app.inject({
-      method: 'POST',
-      url: '/api/demo/login',
-      headers: action,
-      payload: { email: 'recipient@example.test' },
-    });
-    const cookie = `favor_session=${login.cookies[0]!.value}`;
+    const anonymous = await app.request('/me/payouts');
+    assert.equal(anonymous.status, 302);
+    assert.equal(anonymous.headers.get('location'), '/login?next=%2Fme%2Fpayouts');
+    const cookie = await app.login('recipient@example.test');
+    const onboard = { intent: 'onboard' };
     assert.equal(
       (
-        await app.inject({
-          method: 'POST',
-          url: '/api/recipient/onboard',
-          headers: { cookie },
-          payload: {},
+        await app.request('/me/payouts', {
+          cookie,
+          form: onboard,
+          headers: { origin: 'https://attacker.example' },
         })
-      ).statusCode,
-      403,
+      ).status,
+      400,
     );
     assert.equal(
       (
-        await app.inject({
-          method: 'POST',
-          url: '/api/recipient/onboard',
-          headers: { ...action, cookie, origin: 'https://attacker.example' },
-          payload: {},
+        await app.request('/me/payouts', {
+          cookie,
+          form: onboard,
+          headers: { 'sec-fetch-site': 'cross-site' },
         })
-      ).statusCode,
+      ).status,
       403,
     );
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/recipient/onboard',
-      headers: { ...action, cookie },
-      payload: {
+    const response = await app.request('/me/payouts', {
+      cookie,
+      form: {
+        ...onboard,
         account: 'acct_other',
         email: 'other@example.test',
         return_url: 'https://attacker.example/link#private',
       },
     });
-    assert.equal(response.statusCode, 200);
+    assert.equal(response.status, 200);
     assert.deepEqual(s.connect.emails, ['recipient@example.test']);
-    assert.deepEqual(s.connect.origins, ['http://localhost:80']);
-    const state = await app.inject({
-      url: '/api/recipient?onboarding=return&state=ready',
-      headers: { cookie },
-    });
-    assert.deepEqual(state.json(), { state: 'incomplete' });
-    const dashboard = await app.inject({
-      method: 'POST',
-      url: '/api/recipient/dashboard',
-      headers: { ...action, cookie },
-      payload: { account: 'acct_other' },
-    });
+    assert.deepEqual(s.connect.origins, ['http://localhost']);
+    const state = await app.request('/me/payouts?onboarding=return&state=ready', { cookie });
+    assert.equal(state.status, 200);
+    assert.match(await state.text(), /登録内容を確認してください。/);
     assert.equal(
-      dashboard.json().url,
-      `https://connect.stripe.com/express/${[...s.connect.accounts.values()][0]}`,
+      s.store.db
+        .prepare('SELECT state FROM recipients WHERE account_id = ?')
+        .get([...s.connect.accounts.values()][0]!)!.state,
+      'incomplete',
     );
+    const dashboard = await app.request('/me/payouts', {
+      cookie,
+      form: { intent: 'dashboard', account: 'acct_other' },
+    });
+    assert.equal(dashboard.status, 200);
+    assert.deepEqual(s.connect.dashboards, [[...s.connect.accounts.values()][0]]);
   } finally {
     await app.close();
     s.store.close();

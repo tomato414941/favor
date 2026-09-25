@@ -208,8 +208,9 @@ export class MockConnect implements ConnectProvider {
   async inspect(recipient: Recipient): Promise<RecipientState> {
     return recipient.account_id ? 'ready' : 'unregistered';
   }
-  async onboarding(_recipient: Recipient, _origin: string) {
-    return null;
+  /** Stands in for Stripe's hosted onboarding: the person comes straight back as registered. */
+  async onboarding(_recipient: Recipient, origin: string) {
+    return `${origin}/me/payouts?onboarding=return`;
   }
   async dashboard(_recipient: Recipient) {
     return null;

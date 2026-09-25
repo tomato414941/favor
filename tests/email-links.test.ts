@@ -5,8 +5,8 @@ import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
 import { RequestService, DomainError } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
-import { buildApp } from '../src/server/app.js';
 import { Mailbox } from './mailbox.js';
+import { serve } from './http.js';
 const key = () => randomUUID();
 const codeIs = (code: string) => (error: unknown) =>
   error instanceof DomainError && error.code === code;
@@ -171,78 +171,57 @@ test('受信拒否は受諾待ちのメール依頼を見送り、その宛先�
 test('HTTPでメール依頼を作成すると本文にリンクが入り、宛先以外には開けず、受信設定を切り替えられる', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new RequestService(store), {
-    demoAuth: true,
-    emailDelivery: mailbox.deliver,
+  const app = await serve(new RequestService(store), {
+    mail: mailbox.deliver,
     publicOrigin: 'http://localhost:3210',
   });
-  const headers = { host: 'localhost:3210', 'x-favor-action': '1' };
-  const login = async (email: string) => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/demo/login',
-      headers,
-      payload: { email },
-    });
-    assert.equal(response.statusCode, 200);
-    const session = response.cookies.find((cookie) => cookie.name.endsWith('favor_session'))!;
-    return `${session.name}=${session.value}`;
-  };
+  const headers = { 'x-favor-action': '1' };
   try {
-    const sender = await login('client@example.test');
-    const created = await app.inject({
-      method: 'POST',
-      url: '/api/links',
-      headers: { ...headers, cookie: sender, 'idempotency-key': key() },
-      payload: input,
+    const sender = await app.login('client@example.test');
+    const created = await app.request('/api/links', {
+      cookie: sender,
+      headers: { ...headers, 'idempotency-key': key() },
+      json: input,
     });
-    assert.equal(created.statusCode, 201);
-    assert.equal('token' in created.json(), false);
-    assert.equal(created.json().link.recipientEmail, 'maker@example.test');
+    assert.equal(created.status, 201);
+    const result = await created.json();
+    assert.equal('token' in result, false);
+    assert.equal(result.link.recipientEmail, 'maker@example.test');
     const mail = mailbox.messages.at(-1)!;
+    assert.ok(mail.text.includes('http://localhost:3210/link#'));
     const token = /link#([A-Za-z0-9_-]{43})/.exec(mail.text)![1]!;
-    const linkHeaders = { host: 'localhost:3210', 'x-favor-link': token };
-    const anonymous = await app.inject({ url: '/api/links/by-token', headers: linkHeaders });
-    assert.equal(anonymous.statusCode, 401);
-    assert.equal(anonymous.json().code, 'LINK_LOGIN_REQUIRED');
-    const other = await login('other@example.test');
+    const proof = { 'x-favor-link': token };
+    const anonymous = await app.request('/api/links/by-token', { headers: proof });
+    assert.equal(anonymous.status, 401);
+    assert.equal((await anonymous.json()).code, 'LINK_LOGIN_REQUIRED');
+    const other = await app.login('other@example.test');
     assert.equal(
-      (await app.inject({ url: '/api/links/by-token', headers: { ...linkHeaders, cookie: other } }))
-        .statusCode,
+      (await app.request('/api/links/by-token', { cookie: other, headers: proof })).status,
       403,
     );
-    const maker = await login('maker@example.test');
-    const read = await app.inject({
-      url: '/api/links/by-token',
-      headers: { ...linkHeaders, cookie: maker },
+    const maker = await app.login('maker@example.test');
+    const read = await app.request('/api/links/by-token', { cookie: maker, headers: proof });
+    assert.equal(read.status, 200);
+    assert.equal((await read.json()).clientName, '匿名の依頼者');
+    const landing = await app.request('/link', { cookie: maker });
+    assert.equal(landing.status, 200);
+    assert.doesNotMatch(await landing.text(), /メールで届ける依頼です/);
+    const blocked = await app.request('/link', {
+      cookie: maker,
+      form: { intent: 'optout', token, blocked: '1' },
     });
-    assert.equal(read.statusCode, 200);
-    assert.equal(read.json().clientName, '匿名の依頼者');
-    assert.deepEqual(
-      (
-        await app.inject({ url: '/api/links/optout', headers: { ...headers, cookie: maker } })
-      ).json(),
-      { blocked: false },
-    );
-    const blocked = await app.inject({
-      method: 'POST',
-      url: '/api/links/optout',
-      headers: { ...headers, cookie: maker },
-      payload: { blocked: true },
-    });
-    assert.deepEqual(blocked.json(), { blocked: true });
+    assert.equal(blocked.status, 200);
+    assert.deepEqual(app.favor.links.optout('maker@example.test'), { blocked: true });
     assert.equal(
-      (await app.inject({ url: '/api/links/by-token', headers: { ...linkHeaders, cookie: maker } }))
-        .statusCode,
+      (await app.request('/api/links/by-token', { cookie: maker, headers: proof })).status,
       404,
     );
-    const refused = await app.inject({
-      method: 'POST',
-      url: '/api/links',
-      headers: { ...headers, cookie: sender, 'idempotency-key': key() },
-      payload: input,
+    const refused = await app.request('/api/links', {
+      cookie: sender,
+      headers: { ...headers, 'idempotency-key': key() },
+      json: input,
     });
-    assert.equal(refused.statusCode, 409);
+    assert.equal(refused.status, 409);
   } finally {
     await app.close();
     store.close();

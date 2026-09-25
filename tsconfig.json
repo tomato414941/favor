@@ -11,7 +11,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "noEmit": true,
+    "rootDirs": [".", "./.react-router/types"],
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "client", "tests/*.ts", "vite.config.ts"]
+  "include": ["app", "src", "tests/*.ts", "vite.config.ts", "react-router.config.ts", ".react-router/types/**/*"]
 }

@@ -5,9 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { Store } from '../src/server/store.js';
 import { AuthService } from '../src/server/auth.js';
 import { Mailbox } from './mailbox.js';
+import { serve } from './http.js';
 import { RequestService, DomainError } from '../src/server/service.js';
 import { RequestLinkService } from '../src/server/request-links.js';
-import { buildApp } from '../src/server/app.js';
 import type { RequestLinkInput } from '../src/shared.js';
 const key = () => randomUUID();
 const input: RequestLinkInput = {
@@ -236,114 +236,80 @@ test('宛先未指定の依頼にも作成件数の制限を適用する', async
 test('HTTPで未登録閲覧・受諾の競合・納品ファイルの権限を確認する', async () => {
   const store = new Store();
   const mailbox = new Mailbox();
-  const app = await buildApp(new RequestService(store), {
-    demoAuth: true,
-    emailDelivery: mailbox.deliver,
-  });
+  const app = await serve(new RequestService(store), { mail: mailbox.deliver });
   const headers = { 'x-favor-action': '1' };
-  const register = async (name: string) => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/demo/login',
-      headers,
-      payload: { email: `${name}@example.test` },
-    });
-    assert.equal(response.statusCode, 200);
-    return `favor_session=${response.cookies.find((cookie) => cookie.name === 'favor_session')!.value}`;
-  };
   try {
-    const sender = await register('link_sender');
-    const created = await app.inject({
-      method: 'POST',
-      url: '/api/links',
-      payload: input,
-      headers: { ...headers, cookie: sender, 'idempotency-key': key() },
+    const sender = await app.login('link_sender@example.test');
+    const created = await app.request('/api/links', {
+      cookie: sender,
+      headers: { ...headers, 'idempotency-key': key() },
+      json: input,
     });
-    assert.equal(created.statusCode, 201);
-    const { token, link } = created.json();
+    assert.equal(created.status, 201);
+    const { token, link } = await created.json();
     const proof = { 'x-favor-link': token };
-    const read = await app.inject({ url: '/api/links/by-token', headers: proof });
-    assert.equal(read.statusCode, 200);
-    assert.equal(read.json().brief, input.brief);
-    assert.equal(read.headers['cache-control'], 'no-store');
-    assert.equal(read.headers['referrer-policy'], 'no-referrer');
-    assert.equal((await app.inject(`/api/links/by-token?token=${token}`)).statusCode, 404);
+    const read = await app.request('/api/links/by-token', { headers: proof });
+    assert.equal(read.status, 200);
+    assert.equal((await read.json()).brief, input.brief);
+    assert.equal(read.headers.get('cache-control'), 'no-store');
+    assert.equal(read.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal((await app.request(`/api/links/by-token?token=${token}`)).status, 404);
     assert.equal(
       (
-        await app.inject({
-          method: 'POST',
-          url: '/api/links/by-token/accept',
-          payload: { agreeToRules: true },
-          headers: { ...proof, ...headers, 'idempotency-key': key() },
+        await app.request('/link', {
+          form: { intent: 'accept', token, agreeToRules: 'on', key: key() },
         })
-      ).statusCode,
+      ).status,
       401,
     );
-    assert.equal(
-      (await app.inject({ method: 'POST', url: '/api/links/by-token/decline', headers: proof }))
-        .statusCode,
-      403,
-    );
-    const first = await register('link_recipient');
-    const other = await register('link_other');
+    assert.equal((await app.request('/link', { form: { intent: 'decline', token } })).status, 400);
+    const first = await app.login('link_recipient@example.test');
+    const other = await app.login('link_other@example.test');
     for (const cookie of [first, other])
       assert.equal(
-        (
-          await app.inject({
-            method: 'POST',
-            url: '/api/recipient/onboard',
-            headers: { ...headers, cookie },
-            payload: {},
-          })
-        ).statusCode,
+        (await app.request('/me/payouts', { cookie, form: { intent: 'onboard' } })).status,
         200,
       );
     const operation = key();
     const accept = (cookie: string) =>
-      app.inject({
-        method: 'POST',
-        url: '/api/links/by-token/accept',
-        payload: { agreeToRules: true },
-        headers: { ...headers, ...proof, cookie, 'idempotency-key': operation },
+      app.request('/link', {
+        cookie,
+        form: { intent: 'accept', token, agreeToRules: 'on', key: operation },
       });
     const results = await Promise.all([accept(first), accept(other)]);
-    assert.deepEqual(results.map((r) => r.statusCode).sort(), [200, 404]);
-    const winner = results[0]!.statusCode === 200 ? first : other;
-    const accepted = results.find((r) => r.statusCode === 200)!.json();
-    assert.equal((await accept(winner)).json().requestId, accepted.requestId);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 404]);
+    const winner = results[0]!.status === 200 ? first : other;
+    const loser = winner === first ? other : first;
+    assert.equal((await accept(winner)).status, 200);
+    const accepted = await (
+      await app.request('/api/links/by-token', { cookie: winner, headers: proof })
+    ).json();
+    assert.equal(accepted.state, 'accepted');
     assert.equal(
-      (await app.inject({ url: '/api/links/by-token', headers: proof })).statusCode,
+      (await app.request('/api/links/by-token', { cookie: loser, headers: proof })).status,
       404,
     );
+    assert.equal((await app.request('/api/links/by-token', { headers: proof })).status, 404);
     assert.equal(
-      (await app.inject({ url: '/api/links', headers: { cookie: sender } })).json().links[0].id,
+      (await (await app.request('/api/links', { cookie: sender })).json()).links[0].id,
       link.id,
     );
-    const delivery = await app.inject({
-      method: 'POST',
-      url: `/api/requests/${accepted.requestId}/deliver`,
-      payload: { files: [{ name: 'work.txt', content: 'YQ==' }] },
-      headers: { ...headers, cookie: winner, 'idempotency-key': key() },
+    const upload = new FormData();
+    upload.set('intent', 'deliver');
+    upload.set('key', key());
+    upload.append('files', new File(['a'], 'work.txt', { type: 'text/plain' }), 'work.txt');
+    const delivery = await app.request(`/me/requests/${accepted.requestId}`, {
+      cookie: winner,
+      form: upload,
     });
-    assert.equal(delivery.statusCode, 200);
-    assert.equal(
-      (
-        await app.inject({
-          url: `/api/requests/${delivery.json().id}/files/${delivery.json().files[0].id}`,
-          headers: { cookie: sender },
-        })
-      ).body,
-      'a',
-    );
-    assert.equal(
-      (
-        await app.inject({
-          url: `/api/requests/${delivery.json().id}/files/${delivery.json().files[0].id}`,
-          headers: proof,
-        })
-      ).statusCode,
-      401,
-    );
+    assert.equal(delivery.status, 200);
+    const request = await (
+      await app.request(`/api/requests/${accepted.requestId}`, { cookie: winner })
+    ).json();
+    assert.equal(request.state, 'delivered');
+    const file = `/me/requests/${request.id}/files/${request.files[0].id}`;
+    assert.equal(await (await app.request(file, { cookie: sender })).text(), 'a');
+    assert.equal((await app.request(file, { headers: proof })).status, 401);
   } finally {
     await app.close();
     store.close();

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import secrets
+from urllib.parse import parse_qs
 import sys
 import tempfile
 
@@ -84,8 +85,10 @@ def main():
             expect(page.get_by_role('heading', name='公開作品', exact=True)).to_be_visible()
             layout(page, 'home')
             page.get_by_role('link', name='作品を見る', exact=True).click()
+            expect(page).to_have_url(re.compile(r'/works$'))
             expect(page.get_by_role('heading', name='公開作品', exact=True)).to_be_visible()
             page.go_back()
+            expect(page).to_have_url(re.compile(r'/$'))
             page.get_by_role('link', name='ログイン', exact=True).click()
             expect(page.get_by_role('form', name='メールでログイン')).to_be_visible()
             page.go_back()
@@ -112,24 +115,27 @@ def main():
             review(page)
             failures = []
 
+            def operation_key(request):
+                return parse_qs(request.post_data or '').get('key', [None])[0]
+
             def lose_creation(route):
                 if route.request.method != 'POST':
                     route.continue_()
                     return
                 result = route.fetch()
-                assert result.status == 201
-                failures.append(route.request.headers['idempotency-key'])
+                assert result.status == 200
+                failures.append(operation_key(route.request))
                 route.abort('failed')
 
-            page.route('**/api/links', lose_creation)
+            page.route('**/me/new.data', lose_creation)
             page.get_by_role('button', name='リンクを作成', exact=True).click()
             expect(page.get_by_role('alert')).to_contain_text('接続を確認できませんでした')
-            page.unroute('**/api/links', lose_creation)
+            page.unroute('**/me/new.data', lose_creation)
             retry_keys = []
-            page.on('request', lambda request: retry_keys.append(request.headers.get('idempotency-key')) if request.method == 'POST' and request.url.endswith('/api/links') else None)
+            page.on('request', lambda request: retry_keys.append(operation_key(request)) if request.method == 'POST' and request.url.endswith('/me/new.data') else None)
             page.get_by_role('button', name='リンクを作成', exact=True).click()
             expect(page.get_by_role('status')).to_contain_text('作成済みの依頼')
-            assert retry_keys[0] == failures[0]
+            assert failures[0] and retry_keys[0] == failures[0]
             assert len(sender.request.get(f'{base}/api/links').json()['links']) == 1
             card = page.get_by_role('article', name='依頼リンク').filter(has_text=brief)
             confirm_action(card, 'リンクを再発行', 'リンクを再発行しますか？')
@@ -159,37 +165,30 @@ def main():
             expect(detail).to_contain_text(f'{receiver_email}として受け取ります')
             expect(detail.get_by_role('button', name='受ける', exact=True)).to_be_disabled()
             layout(receiving, 'recipient-onboarding')
-            onboarding_calls = []
-
-            def return_from_onboarding(route):
-                result = route.fetch()
-                assert result.status == 200
-                onboarding_calls.append(route.request.post_data_json)
-                action = 'refresh' if len(onboarding_calls) == 1 else 'return'
-                route.fulfill(response=result, json={'url': f'{base}/me/payouts?onboarding={action}'})
-
-            receiving.route('**/api/recipient/onboard', return_from_onboarding)
-            with receiving.expect_navigation(url='**/me/payouts?onboarding=refresh'):
+            # The stand-in for Stripe returns straight to the payouts page, which leads back to the request.
+            with receiving.expect_navigation(url='**/me/payouts?onboarding=return'):
                 detail.get_by_role('button', name='受取先を登録', exact=True).click()
             expect(detail.get_by_role('checkbox', name='内容・金額・期限を確認しました', exact=True)).to_be_visible()
             expect(receiving).to_have_url(url)
-            assert onboarding_calls == [{}, {}]
             assert receiving.evaluate("sessionStorage.getItem('favor.recipient-return')") is None
-            receiving.unroute('**/api/recipient/onboard', return_from_onboarding)
             expect(detail.get_by_role('heading', name='売上の受け取り')).not_to_be_visible()
             detail.get_by_role('checkbox', name='内容・金額・期限を確認しました', exact=True).check()
 
             def lose_acceptance(route):
+                if route.request.method != 'POST':
+                    route.continue_()
+                    return
                 result = route.fetch()
                 assert result.status == 200
                 route.abort('failed')
 
-            receiving.route('**/api/links/by-token/accept', lose_acceptance)
+            receiving.route('**/link.data', lose_acceptance)
             detail.get_by_role('button', name='受ける', exact=True).click()
             expect(receiving.get_by_role('alert')).to_contain_text('接続を確認できませんでした')
-            receiving.unroute('**/api/links/by-token/accept', lose_acceptance)
-            detail.get_by_role('button', name='受ける', exact=True).click()
+            receiving.unroute('**/link.data', lose_acceptance)
+            # The page re-reads the link after the lost answer, so the acceptance already shows.
             expect(detail).to_contain_text('受諾済み')
+            expect(detail.get_by_role('button', name='受ける', exact=True)).to_have_count(0)
             layout(receiving, 'accepted')
             visiting.reload()
             expect(visiting.get_by_role('alert')).to_contain_text('この依頼リンクは利用できません')
@@ -247,15 +246,18 @@ def main():
             expect(visiting.get_by_role('link', name=re.compile(brief[:10]))).to_be_visible()
             layout(visiting, 'home-with-work')
             visiting.get_by_role('link', name='作品を見る', exact=True).click()
+            expect(visiting).to_have_url(re.compile(r'/works$'))
             expect(visiting.get_by_role('heading', name='公開作品', exact=True)).to_be_visible()
             visiting.get_by_role('link', name=re.compile(brief[:10])).click()
             shown = visiting.get_by_role('article', name='作品', exact=True)
             expect(shown).to_contain_text(brief)
             expect(shown.get_by_role('img', name='イラスト.png')).to_be_visible()
-            assert visiting.request.get(f'{base}/api/works/{delivered_id}/files/{text_id}').status == 404
+            assert visiting.request.get(f'{base}/works/{delivered_id}/files/{text_id}').status == 404
             layout(visiting, 'work')
 
             receiving.get_by_role('button', name='ログアウト', exact=True).click()
+            expect(receiving.get_by_role('link', name='ログイン', exact=True)).to_be_visible()
+            receiving.get_by_role('link', name='ログイン', exact=True).click()
             layout(receiving, 'email-login')
             register(receiving, receiver_email.upper())
             receiving.get_by_role('navigation').get_by_role('link', name=re.compile('^受けた依頼')).click()

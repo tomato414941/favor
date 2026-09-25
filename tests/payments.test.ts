@@ -14,7 +14,7 @@ import {
   type CardStatus,
   type PaymentProvider,
 } from '../src/server/payment-provider.js';
-import { buildApp } from '../src/server/app.js';
+import { serve } from './http.js';
 
 const DAY = 86400000;
 const input = {
@@ -273,7 +273,7 @@ test('カード入力の放置と受諾後の納品期限切れで仮押さえ�
 
 test('決済通知の署名を検証し、重複や順不同の通知を現在のStripeの状態に合わせる', async () => {
   const s = await setup();
-  const app = await buildApp(s.service, { demoAuth: true });
+  const app = await serve(s.service);
   try {
     const draft = await s.create();
     const event = {
@@ -290,21 +290,19 @@ test('決済通知の署名を検証し、重複や順不同の通知を現在�
       },
     };
     const post = async (payload: string, signature: string) =>
-      app.inject({
-        method: 'POST',
-        url: '/api/payments/stripe-webhook',
+      app.request('/api/payments/stripe-webhook', {
         headers: { 'content-type': 'application/json', 'stripe-signature': signature },
-        payload,
+        body: payload,
       });
     const payload = JSON.stringify(event);
-    assert.equal((await post(payload, 'invalid')).statusCode, 400);
+    assert.equal((await post(payload, 'invalid')).status, 400);
     s.cards.authorize(draft.link.id, s.now() + 7 * DAY);
     const signature = s.cards.signer.stripe.webhooks.generateTestHeaderString({
       payload,
       secret: 'whsec_fixture',
     });
-    assert.equal((await post(payload + ' ', signature)).statusCode, 400);
-    for (let i = 0; i < 2; i++) assert.equal((await post(payload, signature)).statusCode, 200);
+    assert.equal((await post(payload + ' ', signature)).status, 400);
+    for (let i = 0; i < 2; i++) assert.equal((await post(payload, signature)).status, 200);
     assert.equal(s.links.get(s.sender, draft.link.id).paymentState, 'authorized');
     await s.links.withdraw(s.sender, draft.link.id, randomUUID());
     const older = JSON.stringify({ ...event, id: 'evt_older' });
@@ -312,7 +310,7 @@ test('決済通知の署名を検証し、重複や順不同の通知を現在�
       payload: older,
       secret: 'whsec_fixture',
     });
-    assert.equal((await post(older, olderSignature)).statusCode, 200);
+    assert.equal((await post(older, olderSignature)).status, 200);
     assert.equal(s.links.get(s.sender, draft.link.id).paymentState, 'released');
     assert.equal(s.cards.releases, 1);
   } finally {
