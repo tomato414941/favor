@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ClerkProvider, useAuth } from '@clerk/clerk-react';
 import { jaJP } from '@clerk/localizations';
 import type { AuthOptions, IdentitySession } from '../src/shared';
@@ -51,8 +51,12 @@ function replace(path: string) {
 /** Re-reads who is signed in whenever Clerk's own state changes. */
 function ClerkSync({ onChange }: { onChange: () => void }) {
   const { isLoaded, isSignedIn } = useAuth();
+  const previous = useRef<boolean | null>(null);
   useEffect(() => {
-    if (isLoaded) onChange();
+    if (!isLoaded) return;
+    // The server already answered for the initial state; only later changes need a re-read.
+    if (previous.current !== null && previous.current !== isSignedIn) onChange();
+    previous.current = isSignedIn;
   }, [isLoaded, isSignedIn, onChange]);
   return null;
 }
@@ -76,15 +80,21 @@ function Providers({
 }
 
 export function App() {
-  const [options, setOptions] = useState<AuthOptions | null>(null);
+  const [boot, setBoot] = useState<{
+    options: AuthOptions;
+    identity: IdentitySession | null;
+  } | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const [clerkTick, setClerkTick] = useState(0);
   const clerkChanged = useCallback(() => setClerkTick((value) => value + 1), []);
   useEffect(() => {
     let active = true;
-    api<AuthOptions>('/auth/options').then(
-      (next) => active && setOptions(next),
+    Promise.all([
+      api<AuthOptions>('/auth/options'),
+      api<IdentitySession | null>('/auth/identity'),
+    ]).then(
+      ([options, identity]) => active && setBoot({ options, identity }),
       (cause: unknown) =>
         active && setError(cause instanceof Error ? cause.message : 'ページを開けませんでした。'),
     );
@@ -92,7 +102,7 @@ export function App() {
       active = false;
     };
   }, [attempt]);
-  if (!options)
+  if (!boot)
     return (
       <main className="shell">
         <div className="loading" role="status">
@@ -106,16 +116,25 @@ export function App() {
       </main>
     );
   return (
-    <Providers options={options} onChange={clerkChanged}>
-      <Pages options={options} clerkTick={clerkTick} />
+    <Providers options={boot.options} onChange={clerkChanged}>
+      <Pages options={boot.options} initialIdentity={boot.identity} clerkTick={clerkTick} />
     </Providers>
   );
 }
 
-function Pages({ options, clerkTick }: { options: AuthOptions; clerkTick: number }) {
+function Pages({
+  options,
+  initialIdentity,
+  clerkTick,
+}: {
+  options: AuthOptions;
+  initialIdentity: IdentitySession | null;
+  clerkTick: number;
+}) {
   const [current, setCurrent] = useState(location());
-  const [identity, setIdentity] = useState<IdentitySession | null>(null);
-  const [ready, setReady] = useState(false);
+  const [identity, setIdentity] = useState<IdentitySession | null>(initialIdentity);
+  const [ready, setReady] = useState(true);
+  const first = useRef(true);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const changed = useCallback(() => {
@@ -124,8 +143,11 @@ function Pages({ options, clerkTick }: { options: AuthOptions; clerkTick: number
   }, []);
   const route = parse(current);
   useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
     let active = true;
-    setReady(false);
     void api<IdentitySession | null>('/auth/identity')
       .then((account) => {
         if (!active) return;
