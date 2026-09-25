@@ -140,14 +140,14 @@ export function RequestForm({
               <p>{choices.find(([value]) => value === visibility)?.[1]}</p>
               {visibility === 'hidden' && (
                 <p>
-                  作り手によるSNS等での作品発表は制限しません。秘密保持や権利譲渡を意味しません。
+                  相手がSNS等で作品を発表することは制限しません。秘密保持や権利譲渡を意味しません。
                 </p>
               )}
               <p>
                 受諾は作成から{terms.acceptanceDays}日以内、納品は最長{terms.deliveryDays}
                 日以内です。 カードの仮押さえ期限により短くなります。
               </p>
-              <p>表現や仕上がりは作り手に任せます。見積もり・打ち合わせ・修正依頼はできません。</p>
+              <p>表現や仕上がりは相手に任せます。見積もり・打ち合わせ・修正依頼はできません。</p>
               <p>
                 作成時にカードの利用枠を仮押さえし、納品時に支払います。取消・辞退・中止・期限切れの場合は解除します。
               </p>
@@ -309,7 +309,7 @@ export function RequestForm({
               </div>
               {visibility === 'hidden' && (
                 <p className="hint">
-                  作り手によるSNS等での作品発表は制限しません。秘密保持や権利譲渡を意味しません。
+                  相手がSNS等で作品を発表することは制限しません。秘密保持や権利譲渡を意味しません。
                 </p>
               )}
             </fieldset>

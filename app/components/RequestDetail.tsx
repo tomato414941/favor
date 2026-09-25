@@ -14,8 +14,8 @@ type Outcome = ActionFailure & { request?: RequestView; notice?: string };
 
 const reasons: Record<string, string> = {
   withdrawn: '依頼を取り消しました。',
-  declined: '作り手が依頼を見送りました。',
-  give_up: '作り手が制作を終了しました。',
+  declined: '相手が依頼を見送りました。',
+  give_up: '相手が制作を終了しました。',
   acceptance_expired: '受諾期限を過ぎました。',
   delivery_expired: '納品期限を過ぎました。',
   payment_expired: '支払いの確認期限を過ぎました。',
