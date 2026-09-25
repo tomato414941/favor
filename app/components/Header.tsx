@@ -1,5 +1,6 @@
 import { useClerk } from '@clerk/react-router';
-import { Link, useFetcher, useNavigate } from 'react-router';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Link, useFetcher, useLocation, useNavigate } from 'react-router';
 import type { IdentitySession } from '../../src/shared';
 import { useSite } from '../root';
 
@@ -10,7 +11,8 @@ function ClerkLogout({ busy }: { busy: boolean }) {
   const navigate = useNavigate();
   return (
     <button
-      className="text-button"
+      className="menu-item"
+      role="menuitem"
       disabled={busy}
       onClick={() => void clerk.signOut().then(() => navigate('/', { replace: true }))}
     >
@@ -24,10 +26,66 @@ export function LogoutButton({ busy = false }: { busy?: boolean }) {
   if (mode === 'clerk') return <ClerkLogout busy={busy} />;
   return (
     <fetcher.Form method="post" action="/logout">
-      <button className="text-button" disabled={busy || fetcher.state !== 'idle'}>
+      <button className="menu-item" role="menuitem" disabled={busy || fetcher.state !== 'idle'}>
         ログアウト
       </button>
     </fetcher.Form>
+  );
+}
+
+/** The signed-in person's own settings, behind their name; closes on Escape, outside clicks, and navigation. */
+function AccountMenu({ label, active, busy }: { label: string; active: Section; busy: boolean }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const location = useLocation();
+  useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: MouseEvent) => {
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [open]);
+  return (
+    <div
+      className="account-menu"
+      ref={root}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.preventDefault();
+          setOpen(false);
+          root.current?.querySelector('button')?.focus();
+        }
+      }}
+    >
+      <button
+        className="account-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="account-name">{label}</span>
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      </button>
+      {open && (
+        <div className="account-popover" role="menu" id={menuId} aria-label="アカウント">
+          <Link
+            className="menu-item"
+            role="menuitem"
+            to="/me/payouts"
+            aria-current={active === 'payouts' ? 'page' : undefined}
+          >
+            受取先
+          </Link>
+          <LogoutButton busy={busy} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -44,7 +102,7 @@ export function SiteHeader({
   busy?: boolean;
 }) {
   const me = identity?.registered ?? false;
-  const label = identity?.email ?? identity?.account.name;
+  const label = identity?.email ?? identity?.account.name ?? '';
   return (
     <header className="header shell">
       <Link className="wordmark" to="/" aria-label="Favor ホーム">
@@ -75,13 +133,7 @@ export function SiteHeader({
               自分の作品
             </Link>
           </nav>
-          <div className="account-menu">
-            <Link to="/me/payouts" aria-current={active === 'payouts' ? 'page' : undefined}>
-              受取先
-            </Link>
-            <span title={label}>{label}</span>
-            <LogoutButton busy={busy} />
-          </div>
+          <AccountMenu label={label} active={active} busy={busy} />
         </>
       ) : (
         <div className="account-menu">

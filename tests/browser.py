@@ -219,7 +219,8 @@ def main():
             work.get_by_role('button', name='差し替える', exact=True).click()
             expect(work).to_contain_text('第2版')
             layout(receiving, 'delivered')
-            receiving.get_by_role('link', name='受取先', exact=True).click()
+            receiving.get_by_role('button', name=re.compile(receiver_email)).click()
+            receiving.get_by_role('menuitem', name='受取先', exact=True).click()
             payout = receiving.get_by_role('region', name='売上の受け取り', exact=True)
             expect(payout).to_contain_text('8%（税込）')
             expect(payout.locator('.detail-facts > div').filter(has=receiving.locator('dt', has_text='振込手数料'))).to_contain_text('無料')
@@ -255,7 +256,8 @@ def main():
             assert visiting.request.get(f'{base}/works/{delivered_id}/files/{text_id}').status == 404
             layout(visiting, 'work')
 
-            receiving.get_by_role('button', name='ログアウト', exact=True).click()
+            receiving.get_by_role('button', name=re.compile(receiver_email)).click()
+            receiving.get_by_role('menuitem', name='ログアウト', exact=True).click()
             expect(receiving.get_by_role('link', name='ログイン', exact=True)).to_be_visible()
             receiving.get_by_role('link', name='ログイン', exact=True).click()
             layout(receiving, 'email-login')

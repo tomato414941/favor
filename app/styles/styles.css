@@ -216,11 +216,62 @@ nav + .account-menu {
   min-width: 0;
   font-size: 12px;
 }
-.account-menu > span {
-  max-width: 120px;
+.account-menu {
+  position: relative;
+}
+.account-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font-size: inherit;
+}
+.account-button:hover,
+.account-button[aria-expanded='true'] {
+  color: var(--ink);
+}
+.account-name {
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.account-popover {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 6px 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(56, 53, 46, 0.1);
+}
+.account-popover form {
+  display: contents;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+  text-decoration: none;
+}
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible {
+  background: var(--surface);
+}
+.menu-item[aria-current] {
+  font-weight: 600;
 }
 .request-link-header > span {
   margin-left: auto;
@@ -970,12 +1021,8 @@ nav .count {
   .account-menu {
     gap: 12px;
   }
-  .account-menu > span {
-    max-width: 90px;
-    font-size: 11px;
-  }
-  .account-menu .text-button {
-    font-size: 11px;
+  .account-name {
+    max-width: 110px;
   }
   #root > main,
   .workspace > main {
@@ -1031,8 +1078,8 @@ nav .count {
   }
 }
 @media (max-width: 480px) {
-  .account-menu > span {
-    max-width: 68px;
+  .account-name {
+    max-width: 80px;
   }
   .demo-banner {
     gap: 8px;
