@@ -28,6 +28,8 @@ const refuse = (message: string) => Response.json({ message }, { status: 403 });
 export const middleware: Route.MiddlewareFunction[] = [
   async ({ request, url, context }, next) => {
     const favor = favorOf(context);
+    const canonical = favor.canonicalLocation(request);
+    if (canonical) throw new Response(null, { status: 308, headers: { Location: canonical } });
     if (!favor.hostAllowed(request)) throw refuse('アクセス先のURLを確認してください。');
     const { pathname } = url;
     if (

@@ -107,6 +107,14 @@ export class Favor {
     if (this.origin) return host === this.origin.host;
     return isLoopback(host.replace(/:\d+$/, ''));
   }
+  /** Where a request to the www form of the served address belongs: the same path at the served address. */
+  canonicalLocation(request: Request): string | null {
+    if (!this.origin) return null;
+    const url = new URL(request.url);
+    const host = request.headers.get('host') ?? url.host;
+    if (host !== `www.${this.origin.host}`) return null;
+    return this.origin.origin + url.pathname + url.search;
+  }
   /** Origins allowed to submit changes. */
   actionOrigins(request: Request): string[] {
     return [this.pageOrigin(request)];

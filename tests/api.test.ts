@@ -88,3 +88,17 @@ test('HTTPでセッションと送信元を確認し、依頼リンクの入力�
     store.close();
   }
 });
+
+test('www付きのアドレスへのアクセスを、同じパスの公開アドレスへ転送する', async () => {
+  const store = new Store();
+  const app = await serve(new RequestService(store), { publicOrigin: 'http://localhost:3210' });
+  try {
+    const moved = await app.request('http://www.localhost:3210/requests/new?to=aoba');
+    assert.equal(moved.status, 308);
+    assert.equal(moved.headers.get('location'), 'http://localhost:3210/requests/new?to=aoba');
+    assert.equal((await app.request('http://localhost:3210/api/health')).status, 200);
+  } finally {
+    await app.close();
+    store.close();
+  }
+});
