@@ -6,6 +6,7 @@ services:
       context: ..
       dockerfile: ops/Dockerfile
     image: favor-staging:${FAVOR_RELEASE:-latest}
+    user: node
     init: true
     network_mode: host
     restart: unless-stopped
@@ -22,7 +23,7 @@ services:
       FAVOR_EMAIL_FROM: ${FAVOR_EMAIL_FROM:?Set FAVOR_EMAIL_FROM}
       FAVOR_TEST_MAIL_DOMAIN: ${FAVOR_TEST_MAIL_DOMAIN:-favor.test}
       FAVOR_PUBLIC_ORIGIN: https://${FAVOR_HOST:?Set FAVOR_HOST}
-      FAVOR_TRUST_PROXY: loopback
+      FAVOR_TRUST_PROXY: proxy
       FAVOR_PORT: ${FAVOR_PORT:-3212}
       FAVOR_DATA_DIR: /var/lib/favor
     volumes:

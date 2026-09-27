@@ -14,6 +14,11 @@ const development = process.env.NODE_ENV === 'development';
 const port = Number(process.env.FAVOR_PORT ?? 3210);
 if (!Number.isInteger(port) || port < 1024 || port > 65535)
   throw new Error('FAVOR_PORT must be an integer from 1024 to 65535.');
+// Only the proxy in front should reach the server: loopback when it runs beside it, every interface when the
+// platform's proxy connects from outside the machine (as on Fly.io).
+const bind = process.env.FAVOR_BIND ?? '127.0.0.1';
+if (!['127.0.0.1', '0.0.0.0'].includes(bind))
+  throw new Error('FAVOR_BIND must be 127.0.0.1 or 0.0.0.0.');
 
 let loadBuild;
 let vite = null;
@@ -82,8 +87,8 @@ function serveAsset(request, response) {
 }
 
 const listener = createRequestListener(handle, {
-  // Behind the local reverse proxy, requests belong to the public origin.
-  ...(favor.trustLoopbackProxy && favor.origin
+  // Behind a TLS-terminating proxy, requests belong to the public origin.
+  ...(favor.trustProxy && favor.origin
     ? { protocol: favor.origin.protocol, host: favor.origin.host }
     : {}),
   onError(error) {
@@ -111,6 +116,6 @@ async function close() {
 }
 process.on('SIGINT', () => void close());
 process.on('SIGTERM', () => void close());
-server.listen(port, '127.0.0.1', () => {
-  console.error(`Favor is listening on http://127.0.0.1:${port}`);
+server.listen(port, bind, () => {
+  console.error(`Favor is listening on http://${bind}:${port}`);
 });

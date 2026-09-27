@@ -28,7 +28,7 @@ export interface FavorConfig {
   mail?: EmailDelivery;
   publicOrigin?: string;
   publicProfile?: PublicProfile;
-  trustLoopbackProxy?: boolean;
+  trustProxy?: boolean;
   log?: (message: string) => void;
 }
 const PROFILE_TTL_MS = 300_000;
@@ -44,7 +44,7 @@ export class Favor {
   readonly origin: URL | null;
   readonly publicProfile: PublicProfile | null;
   readonly sessionCookieName: string;
-  readonly trustLoopbackProxy: boolean;
+  readonly trustProxy: boolean;
   readonly log: (message: string) => void;
   private readonly clerkClient;
   private readonly profiles = new Map<string, { at: number; identity: ResolvedIdentity }>();
@@ -69,14 +69,14 @@ export class Favor {
       );
     if (this.mode === 'demo' && this.origin && !isLoopback(this.origin.hostname))
       throw new Error('Demo authentication is allowed only on loopback.');
-    if (config.trustLoopbackProxy && !this.origin)
-      throw new Error('FAVOR_PUBLIC_ORIGIN is required when trusting the loopback proxy.');
+    if (config.trustProxy && !this.origin)
+      throw new Error('FAVOR_PUBLIC_ORIGIN is required when trusting the proxy.');
     if (
       this.clerk &&
       (!this.clerk.secretKey.startsWith('sk_') || !this.clerk.publishableKey.startsWith('pk_'))
     )
       throw new Error('CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY are required.');
-    this.trustLoopbackProxy = config.trustLoopbackProxy === true;
+    this.trustProxy = config.trustProxy === true;
     this.log = config.log ?? (() => {});
     this.auth = new AuthService(this.service.store, this.service.clock, {
       allowDemo: this.mode === 'demo',
@@ -189,8 +189,8 @@ export async function configFromEnv(env: Record<string, string | undefined>): Pr
       'Live payments require a dedicated data directory, HTTPS, live Clerk keys, public business information, and real email delivery.',
     );
   const trustProxy = env.FAVOR_TRUST_PROXY ?? 'none';
-  if (!['none', 'loopback'].includes(trustProxy))
-    throw new Error('FAVOR_TRUST_PROXY must be none or loopback.');
+  if (!['none', 'proxy'].includes(trustProxy))
+    throw new Error('FAVOR_TRUST_PROXY must be none or proxy.');
   const directory = resolve(env.FAVOR_DATA_DIR ?? 'data');
   const production = env.NODE_ENV === 'production';
   const publicHost = publicOrigin && !isLoopback(parsePublicOrigin(publicOrigin).hostname);
@@ -249,7 +249,7 @@ export async function configFromEnv(env: Record<string, string | undefined>): Pr
     mail,
     ...(publicOrigin === undefined ? {} : { publicOrigin }),
     ...(profile ? { publicProfile: profile } : {}),
-    trustLoopbackProxy: trustProxy === 'loopback',
+    trustProxy: trustProxy === 'proxy',
     log: (message) => console.error(message),
   };
 }

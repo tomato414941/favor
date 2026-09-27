@@ -17,5 +17,6 @@ COPY server.mjs LICENSE ./
 COPY scripts/migrate-v10.mjs scripts/payments-report.mjs ./scripts/
 COPY src/server/settlement-schema.ts ./src/server/
 RUN mkdir -p /var/lib/favor && chown node:node /var/lib/favor && chmod 700 /var/lib/favor
-USER node
-CMD ["/bin/sh", "-c", "umask 077; exec node server.mjs"]
+# Runs as node. Where the platform mounts the data directory as root (Fly.io volumes), the container starts as
+# root only long enough to hand that directory to node.
+CMD ["/bin/sh", "-c", "umask 077; if [ \"$(id -u)\" = 0 ]; then d=\"${FAVOR_DATA_DIR:-/var/lib/favor}\"; mkdir -p \"$d\" && chown node:node \"$d\" && chmod 700 \"$d\" && exec setpriv --reuid=node --regid=node --init-groups node server.mjs; fi; exec node server.mjs"]
